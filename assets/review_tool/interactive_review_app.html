@@ -1,0 +1,1276 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>交互式全文稿审片</title>
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f6f7f9;
+    --ink: #15171a;
+    --muted: #667085;
+    --line: #d9dee7;
+    --panel: #ffffff;
+    --accent: #0a66c2;
+    --danger: #b42318;
+    --ok: #087443;
+    --soft: #eef2f7;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+    color: var(--ink);
+    background: var(--bg);
+    line-height: 1.5;
+  }
+  header {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: rgba(246, 247, 249, 0.97);
+    border-bottom: 1px solid var(--line);
+    backdrop-filter: blur(8px);
+  }
+  .bar {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 16px;
+    align-items: center;
+    padding: 14px 18px 10px;
+  }
+  h1 {
+    margin: 0;
+    font-size: 20px;
+    letter-spacing: 0;
+  }
+  .sub, .status {
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .actions, .tool-buttons, .line-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .actions { justify-content: flex-end; }
+  button, input, select, [contenteditable] {
+    font: inherit;
+  }
+  button {
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 7px 10px;
+    background: #fff;
+    color: var(--ink);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  button:hover { border-color: #a8b2c2; }
+  button:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+  button.primary {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: #fff;
+  }
+  button.danger { color: var(--danger); }
+  button[hidden] { display: none; }
+  button.active {
+    border-color: var(--ink);
+    background: var(--ink);
+    color: #fff;
+  }
+  .status {
+    min-height: 24px;
+    padding: 0 18px 10px;
+  }
+  .status.ok { color: var(--ok); }
+  .status.danger-text { color: var(--danger); }
+  .project-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    margin-top: 8px;
+  }
+  .lock-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    margin-top: 6px;
+  }
+  .lock-status {
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .lock-status.locked {
+    color: var(--danger);
+  }
+  .lock-status.held {
+    color: var(--ok);
+  }
+  select {
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 6px 8px;
+    background: #fff;
+    min-width: 220px;
+  }
+  .players {
+    display: grid;
+    grid-template-columns: minmax(280px, 1fr) minmax(260px, 420px);
+    gap: 14px;
+    padding: 12px 18px;
+    background: var(--soft);
+    border-bottom: 1px solid var(--line);
+  }
+  .player label {
+    display: block;
+    margin-bottom: 6px;
+    color: var(--muted);
+    font-size: 12px;
+  }
+  .media-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .media-tabs button.active {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: #fff;
+  }
+  audio, video { width: 100%; display: block; background: #000; }
+  video { max-height: 360px; }
+  .export-panel {
+    border: 1px solid var(--line);
+    background: #fff;
+    padding: 10px;
+    font-size: 13px;
+  }
+  .export-panel h2 {
+    margin: 0 0 8px;
+    font-size: 14px;
+    letter-spacing: 0;
+  }
+  .export-list {
+    display: grid;
+    gap: 5px;
+  }
+  .export-list div {
+    overflow-wrap: anywhere;
+  }
+  .metrics {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px 18px;
+    background: #fff;
+    border-bottom: 1px solid var(--line);
+  }
+  .metric {
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 6px 9px;
+    background: #fff;
+    font-size: 13px;
+  }
+  .metric span { color: var(--muted); margin-right: 4px; }
+  main { padding: 14px 18px 36px; }
+  .toolbar {
+    display: grid;
+    grid-template-columns: minmax(240px, 1fr) auto auto;
+    gap: 12px;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+  .filter-info {
+    color: var(--muted);
+    font-size: 13px;
+    white-space: nowrap;
+  }
+  .bulk-menu {
+    position: relative;
+  }
+  .bulk-menu summary {
+    list-style: none;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 7px 10px;
+    background: #fff;
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+  }
+  .bulk-menu summary::-webkit-details-marker {
+    display: none;
+  }
+  .bulk-menu[open] summary {
+    border-color: #a8b2c2;
+  }
+  .bulk-panel {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 6px);
+    z-index: 8;
+    display: grid;
+    gap: 6px;
+    min-width: 150px;
+    padding: 8px;
+    border: 1px solid var(--line);
+    background: #fff;
+    box-shadow: 0 10px 20px rgba(15, 23, 42, 0.10);
+  }
+  .bulk-panel button {
+    width: 100%;
+    text-align: left;
+  }
+  input[type="search"] {
+    width: 100%;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 9px 10px;
+    background: #fff;
+  }
+  .script {
+    border: 1px solid var(--line);
+    background: var(--panel);
+  }
+  .line-row {
+    display: grid;
+    grid-template-columns: 116px minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: start;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--line);
+  }
+  .line-row:last-child { border-bottom: 0; }
+  .line-row.active {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+    background: #f8fbff;
+  }
+  .line-row.deleted {
+    background: #fafafa;
+  }
+  .line-row.deleted .line-text {
+    text-decoration: line-through;
+    color: #7a3030;
+  }
+  .line-meta {
+    display: grid;
+    gap: 5px;
+    color: var(--muted);
+    font-size: 12px;
+  }
+  .line-number {
+    color: var(--ink);
+    font-weight: 650;
+  }
+  .time {
+    font-variant-numeric: tabular-nums;
+  }
+  .line-text {
+    min-height: 34px;
+    padding: 5px 6px;
+    border-radius: 5px;
+    outline: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-size: 16px;
+  }
+  .line-text:focus {
+    background: #fff;
+    box-shadow: inset 0 0 0 1px var(--accent);
+  }
+  .line-actions {
+    justify-content: flex-end;
+    min-width: 92px;
+  }
+  .small {
+    padding: 5px 7px;
+    font-size: 12px;
+  }
+  .empty {
+    padding: 18px;
+    color: var(--muted);
+  }
+  @media (max-width: 980px) {
+    .bar, .players, .toolbar, .line-row {
+      grid-template-columns: 1fr;
+    }
+    .filter-info { white-space: normal; }
+    .actions, .line-actions { justify-content: flex-start; }
+    .bulk-panel {
+      position: static;
+      margin-top: 6px;
+      box-shadow: none;
+    }
+  }
+</style>
+
+<header>
+  <div class="bar">
+    <div>
+      <h1 id="pageTitle">交互式全文稿审片</h1>
+      <div class="sub">一行一句；删除线行会被剪掉，取消删除线就保留。Enter 拆行；行首 Backspace 合并上行；⌘J/Ctrl+J 合并下行；空行 Delete 删行；⌘D/Ctrl+D 切换删除线。</div>
+      <div class="project-row">
+        <label for="projectSelect" class="sub">项目</label>
+        <select id="projectSelect"></select>
+        <span class="sub" id="projectInfo"></span>
+      </div>
+      <div class="lock-row">
+        <span id="lockInfo" class="lock-status">编辑锁检查中</span>
+        <button id="acquireLockBtn" class="small" hidden>获取编辑权</button>
+        <button id="takeoverLockBtn" class="small danger" hidden>接管编辑</button>
+        <button id="releaseLockBtn" class="small" hidden>释放编辑权</button>
+      </div>
+    </div>
+    <div class="actions">
+      <button id="saveBtn" class="primary">保存</button>
+      <button id="forceSaveBtn" class="danger" hidden>强制覆盖保存</button>
+      <button id="exportBtn">导出文件</button>
+      <button id="renderBtn">渲染预览</button>
+      <button id="reloadBtn" class="danger">重载状态</button>
+    </div>
+  </div>
+  <div class="status" id="status">载入中</div>
+  <section class="players">
+    <div class="player">
+      <label>媒体预览</label>
+      <div class="media-tabs" id="mediaTabs"></div>
+      <div id="mediaMount"></div>
+    </div>
+    <div class="export-panel">
+      <h2>最近导出</h2>
+      <div class="export-list" id="exportResults">还没有导出</div>
+    </div>
+  </section>
+  <section class="metrics" id="metrics"></section>
+</header>
+
+<main>
+  <div class="toolbar">
+    <input id="search" type="search" placeholder="搜索全文、型号、价格、删点来源">
+    <div class="filter-info" id="filterInfo"></div>
+    <div class="tool-buttons">
+      <button id="showDeleted">只看删除线</button>
+      <button id="prevDeleted">上一条删除线</button>
+      <button id="nextDeleted">下一条删除线</button>
+      <details class="bulk-menu">
+        <summary>批量</summary>
+        <div class="bulk-panel">
+          <button id="restoreSuggested">恢复建议删除线</button>
+          <button id="clearDeleted">取消全部删除线</button>
+        </div>
+      </details>
+    </div>
+  </div>
+  <section class="script" id="scriptRows"></section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const fmt = (s) => {
+  s = Math.max(0, Number(s) || 0);
+  const m = Math.floor(s / 60);
+  const sec = (s - m * 60).toFixed(2).padStart(5, "0");
+  return `${String(m).padStart(2, "0")}:${sec}`;
+};
+const parseNum = (value) => Number.parseFloat(String(value).trim()) || 0;
+
+let projects = [];
+let currentProjectId = "";
+let meta = {};
+let state = { scriptLines: [], useScriptLines: true };
+let activeLineId = null;
+let showDeletedOnly = false;
+let activeMediaId = "";
+let baseRevision = null;
+let dirty = false;
+let saveConflict = null;
+let stopHandler = null;
+let busyMode = "";
+let lockToken = "";
+let lockStatus = { locked: false, heldByMe: false };
+let heartbeatTimer = null;
+
+function makeId(prefix) {
+  const value = globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return `${prefix}-${value}`;
+}
+
+const clientId = (() => {
+  const key = "interactiveReviewClientId";
+  let value = localStorage.getItem(key);
+  if (!value) {
+    value = makeId("client");
+    localStorage.setItem(key, value);
+  }
+  return value;
+})();
+
+const tabId = (() => {
+  const key = "interactiveReviewTabId";
+  let value = sessionStorage.getItem(key);
+  if (!value) {
+    value = makeId("tab");
+    sessionStorage.setItem(key, value);
+  }
+  return value;
+})();
+
+function ownerName() {
+  return `浏览器 ${clientId.slice(-6)}`;
+}
+
+function lockStorageKey(projectId = currentProjectId) {
+  return `interactiveReviewLockToken:${projectId}`;
+}
+
+function canEdit() {
+  return Boolean(lockStatus?.heldByMe && lockToken);
+}
+
+function requireEdit() {
+  if (canEdit()) return true;
+  setStatus("当前是只读状态，需要先获取或接管编辑权。", "danger-text");
+  return false;
+}
+
+function setStatus(text, cls = "") {
+  const el = $("status");
+  el.className = `status ${cls}`;
+  el.textContent = text;
+}
+
+function setBusy(mode = "") {
+  busyMode = mode;
+  renderControls();
+}
+
+function renderLockInfo() {
+  const info = $("lockInfo");
+  const lock = lockStatus?.lock;
+  info.className = "lock-status";
+  if (canEdit()) {
+    info.textContent = `已取得编辑权：${lock?.ownerName || ownerName()}`;
+    info.classList.add("held");
+  } else if (lockStatus?.locked) {
+    info.textContent = `只读：${lock?.ownerName || "其他浏览器"} 正在编辑`;
+    info.classList.add("locked");
+  } else {
+    info.textContent = "未取得编辑权";
+  }
+  $("acquireLockBtn").hidden = canEdit() || Boolean(lockStatus?.locked);
+  $("takeoverLockBtn").hidden = canEdit() || !lockStatus?.locked;
+  $("releaseLockBtn").hidden = !canEdit();
+}
+
+function renderControls() {
+  const busy = Boolean(busyMode);
+  const readOnly = !canEdit();
+  $("saveBtn").disabled = busy || readOnly;
+  $("exportBtn").disabled = busy || readOnly;
+  $("renderBtn").disabled = busy || readOnly;
+  $("forceSaveBtn").disabled = busy || readOnly;
+  $("restoreSuggested").disabled = busy || readOnly;
+  $("clearDeleted").disabled = busy || readOnly;
+  $("reloadBtn").disabled = busy;
+  $("projectSelect").disabled = busy;
+  $("saveBtn").textContent = busyMode === "saving" ? "保存中" : "保存";
+  $("exportBtn").textContent = busyMode === "exporting" ? "导出中" : "导出文件";
+  $("renderBtn").textContent = busyMode === "rendering" ? "渲染中" : "渲染预览";
+  renderLockInfo();
+}
+
+function escapeHtml(text) {
+  return String(text ?? "").replace(/[&<>"']/g, ch => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[ch]));
+}
+
+function shortRevision(value) {
+  return value ? String(value).slice(0, 22) : "无";
+}
+
+function projectLabel(project) {
+  const type = project.mediaType === "video" ? "视频" : "音频";
+  return `${project.title} (${type})`;
+}
+
+function apiPath(path) {
+  return `${path}?project=${encodeURIComponent(currentProjectId)}`;
+}
+
+function apiPathWithLock(path) {
+  const query = new URLSearchParams({
+    project: currentProjectId,
+    ownerId: clientId,
+    lockToken: lockToken || "",
+  });
+  return `${path}?${query.toString()}`;
+}
+
+function lockPayload(extra = {}) {
+  return {
+    ownerId: clientId,
+    ownerName: ownerName(),
+    tabId,
+    lockToken,
+    ...extra,
+  };
+}
+
+function applyLockStatus(nextStatus = {}) {
+  lockStatus = nextStatus || { locked: false, heldByMe: false };
+  if (lockStatus.heldByMe && lockStatus.lock?.token) {
+    lockToken = lockStatus.lock.token;
+    localStorage.setItem(lockStorageKey(), lockToken);
+  } else if (!lockStatus.heldByMe) {
+    lockToken = "";
+    localStorage.removeItem(lockStorageKey());
+  }
+  renderControls();
+  renderRows();
+}
+
+function stopHeartbeat() {
+  if (heartbeatTimer) clearInterval(heartbeatTimer);
+  heartbeatTimer = null;
+}
+
+function startHeartbeat() {
+  stopHeartbeat();
+  if (!canEdit()) return;
+  heartbeatTimer = setInterval(() => heartbeatLock(), 20000);
+}
+
+async function acquireLock(takeover = false) {
+  if (!currentProjectId) return false;
+  const endpoint = takeover ? "/api/lock/takeover" : "/api/lock/acquire";
+  const res = await fetch(apiPath(endpoint), {
+    method: "POST",
+    body: JSON.stringify(lockPayload(takeover ? { reason: "manual takeover" } : {})),
+  });
+  const data = await res.json();
+  if (!res.ok || data.ok === false) {
+    applyLockStatus({ locked: Boolean(data.locked), heldByMe: false, lock: data.lock });
+    setStatus(data.locked ? `只读：${data.lock?.ownerName || "其他浏览器"} 正在编辑` : `获取编辑权失败：${data.error}`, "danger-text");
+    return false;
+  }
+  lockToken = data.token || data.lock?.token || lockToken;
+  localStorage.setItem(lockStorageKey(), lockToken);
+  applyLockStatus({ locked: true, heldByMe: true, lock: data.lock });
+  startHeartbeat();
+  setStatus(takeover ? "已接管编辑权" : "已取得编辑权", "ok");
+  return true;
+}
+
+async function heartbeatLock() {
+  if (!canEdit()) return;
+  try {
+    const res = await fetch(apiPath("/api/lock/heartbeat"), {
+      method: "POST",
+      body: JSON.stringify(lockPayload()),
+    });
+    const data = await res.json();
+    if (!res.ok || data.ok === false) {
+      stopHeartbeat();
+      applyLockStatus({ locked: Boolean(data.locked), heldByMe: false, lock: data.lock });
+      setStatus("编辑锁已失效，页面切换为只读。", "danger-text");
+      return;
+    }
+    applyLockStatus({ locked: true, heldByMe: true, lock: data.lock });
+  } catch {
+    // 下一次 heartbeat 再判断，避免短暂网络抖动立即踢出编辑态。
+  }
+}
+
+async function releaseLock(options = {}) {
+  const projectId = options.projectId || currentProjectId;
+  const token = options.token || lockToken || localStorage.getItem(lockStorageKey(projectId)) || "";
+  if (!projectId || !token) return;
+  stopHeartbeat();
+  try {
+    await fetch(`/api/lock/release?project=${encodeURIComponent(projectId)}`, {
+      method: "POST",
+      keepalive: true,
+      body: JSON.stringify({
+        ownerId: clientId,
+        ownerName: ownerName(),
+        tabId,
+        lockToken: token,
+      }),
+    });
+  } catch {
+    // release 是 best-effort；TTL 会自动过期。
+  }
+  if (projectId === currentProjectId) {
+    lockToken = "";
+    applyLockStatus({ locked: false, heldByMe: false });
+  }
+  localStorage.removeItem(lockStorageKey(projectId));
+}
+
+function setDirty(value = true) {
+  dirty = value;
+  renderProjectInfo();
+  renderMetrics();
+}
+
+function renderProjectInfo() {
+  const project = projects.find(item => item.id === currentProjectId);
+  const dirtyText = dirty ? "未保存" : "已保存";
+  const conflictText = saveConflict ? "；有保存冲突" : "";
+  $("projectInfo").textContent = project
+    ? `${project.mediaType === "video" ? "视频" : "音频"}；${dirtyText}；版本 ${shortRevision(baseRevision)}${conflictText}`
+    : "";
+  $("forceSaveBtn").hidden = !saveConflict;
+  renderControls();
+}
+
+async function loadProjects() {
+  const res = await fetch("/api/projects");
+  const data = await res.json();
+  projects = data.projects || [];
+  currentProjectId = data.defaultProject || projects[0]?.id || "";
+  $("projectSelect").innerHTML = projects.map(project =>
+    `<option value="${escapeHtml(project.id)}">${escapeHtml(projectLabel(project))}</option>`
+  ).join("");
+  $("projectSelect").value = currentProjectId;
+  await loadData(currentProjectId, { force: true });
+}
+
+async function loadData(projectId = currentProjectId, options = {}) {
+  if (dirty && !options.force && !confirm("当前页面有未保存改动，切换或重载会丢失这些改动。继续？")) {
+    $("projectSelect").value = currentProjectId;
+    return;
+  }
+  const previousProjectId = currentProjectId;
+  const previousToken = lockToken;
+  if (previousProjectId && previousProjectId !== projectId) {
+    await releaseLock({ projectId: previousProjectId, token: previousToken });
+  }
+  currentProjectId = projectId;
+  $("projectSelect").value = currentProjectId;
+  lockToken = localStorage.getItem(lockStorageKey()) || "";
+  const res = await fetch(apiPathWithLock("/api/data"));
+  const data = await res.json();
+  if (!res.ok || data.ok === false) throw new Error(data.error || "载入失败");
+  meta = data.meta;
+  state = data.state;
+  baseRevision = data.revision || meta.stateRevision || null;
+  dirty = false;
+  saveConflict = null;
+  applyLockStatus(data.lockStatus || { locked: false, heldByMe: false });
+  state.useScriptLines = true;
+  if (!Array.isArray(state.scriptLines)) state.scriptLines = [];
+  $("pageTitle").textContent = meta.title || "交互式全文稿审片";
+  document.title = meta.title || "交互式全文稿审片";
+  activeMediaId = (meta.media || [])[0]?.id || "";
+  renumberLines();
+  renderAll();
+  renderMediaTabs();
+  setStatus(`已载入：${meta.statePath}`);
+  await acquireLock(false);
+}
+
+function lineDuration(line) {
+  const start = parseNum(line.start);
+  const end = Math.max(start, parseNum(line.end));
+  return end - start;
+}
+
+function deletedDuration() {
+  return state.scriptLines.reduce((sum, line) => sum + (line.deleted ? lineDuration(line) : 0), 0);
+}
+
+function renderMetrics() {
+  const deletedLines = state.scriptLines.filter(line => line.deleted).length;
+  const removed = deletedDuration();
+  const visibleCount = visibleLines().length;
+  const filterActive = Boolean($("search")?.value.trim()) || showDeletedOnly;
+  $("metrics").innerHTML = [
+    `<div class="metric"><span>项目</span>${escapeHtml(meta.title || currentProjectId)}</div>`,
+    `<div class="metric"><span>全文行数</span>${state.scriptLines.length}</div>`,
+    `<div class="metric"><span>删除线</span>${deletedLines}</div>`,
+    `<div class="metric"><span>删除时长</span>${fmt(removed)}</div>`,
+    `<div class="metric"><span>预计成片</span>${fmt(meta.originalDuration - removed)}</div>`,
+    filterActive ? `<div class="metric"><span>当前可见</span>${visibleCount}</div>` : "",
+    activeLineId ? `<div class="metric"><span>当前行</span>#${escapeHtml(lineById(activeLineId)?.index || activeLineId)}</div>` : "",
+    `<div class="metric"><span>状态</span>${dirty ? "未保存" : "已保存"}</div>`,
+    `<div class="metric"><span>保存路径</span>${escapeHtml(meta.statePath || "")}</div>`
+  ].filter(Boolean).join("");
+  $("filterInfo").textContent = filterActive ? `显示 ${visibleCount} / ${state.scriptLines.length}` : "";
+  renderProjectInfo();
+}
+
+function activeMediaItem() {
+  return (meta.media || []).find(item => item.id === activeMediaId) || (meta.media || [])[0];
+}
+
+function renderMediaTabs() {
+  const items = meta.media || [];
+  if (!items.length) {
+    $("mediaTabs").innerHTML = "";
+    $("mediaMount").innerHTML = `<div class="empty">当前项目没有可预览媒体</div>`;
+    return;
+  }
+  if (!items.some(item => item.id === activeMediaId)) activeMediaId = items[0].id;
+  $("mediaTabs").innerHTML = items.map(item =>
+    `<button class="small ${item.id === activeMediaId ? "active" : ""}" data-media-tab="${escapeHtml(item.id)}">${escapeHtml(item.label)}</button>`
+  ).join("");
+  const item = activeMediaItem();
+  const tag = item.type === "video" ? "video" : "audio";
+  $("mediaMount").innerHTML = `<${tag} data-active-media controls preload="metadata" src="${escapeHtml(item.url)}"></${tag}>`;
+}
+
+function renderExportResults(result = null) {
+  if (!result) {
+    $("exportResults").textContent = "还没有导出";
+    return;
+  }
+  const entries = [
+    ["成片 SRT", result.srt],
+    ["原始时间线 SRT", result.currentTimelineSrt],
+    ["EDL / keep segments", result.edl],
+    ["删除区间 CSV", result.deletes],
+    ["全文 CSV", result.scriptLines],
+    ["DaVinci FCPXML", result.davinciTimelineFcpxml],
+    ["DaVinci handoff", result.davinciHandoff],
+    ["DaVinci keep CSV", result.davinciKeepCsv],
+    ["DaVinci readme", result.davinciReadme],
+    ["成片逐字对齐 JSON", result.selectedAlignmentJson],
+    ["成片逐字对齐 JSONL", result.selectedAlignmentUnitsJsonl],
+    ["成片逐字对齐 CSV", result.selectedAlignmentUnitsCsv],
+    ["原始时间线逐字对齐 JSON", result.originalAlignmentJson],
+    ["原始时间线逐字对齐 JSONL", result.originalAlignmentUnitsJsonl],
+    ["原始时间线逐字对齐 CSV", result.originalAlignmentUnitsCsv],
+    ["渲染媒体", result.media || result.audio || result.video],
+  ].filter(([, value]) => value);
+  $("exportResults").innerHTML = entries.map(([label, value]) =>
+    `<div><strong>${escapeHtml(label)}</strong>：${escapeHtml(value)}</div>`
+  ).join("");
+}
+
+function visibleLines() {
+  const q = $("search").value.trim().toLowerCase();
+  return state.scriptLines.filter(line => {
+    if (showDeletedOnly && !line.deleted) return false;
+    if (!q) return true;
+    return `${line.text} ${line.source || ""}`.toLowerCase().includes(q);
+  });
+}
+
+function renderRows() {
+  const rows = visibleLines();
+  const editable = canEdit();
+  $("scriptRows").innerHTML = rows.map(line => {
+    const deleted = Boolean(line.deleted);
+    const active = String(line.id) === String(activeLineId);
+    return `<div class="line-row ${deleted ? "deleted" : ""} ${active ? "active" : ""}" data-line-id="${line.id}">
+      <div class="line-meta">
+        <div><span class="line-number">#${line.index}</span></div>
+        <div class="time">${fmt(line.start)}-${fmt(line.end)}</div>
+      </div>
+      <div class="line-text" data-line-text="${line.id}" contenteditable="${editable ? "true" : "false"}" spellcheck="false">${escapeHtml(line.text)}</div>
+      <div class="line-actions">
+        <button class="small" data-play-line="${line.id}">播放</button>
+        <button class="small" data-insert-after="${line.id}" ${editable ? "" : "disabled"}>插下</button>
+      </div>
+    </div>`;
+  }).join("") || `<div class="empty">没有匹配的行</div>`;
+}
+
+function renderAll() {
+  renderMetrics();
+  renderRows();
+}
+
+function lineById(id) {
+  return state.scriptLines.find(line => String(line.id) === String(id));
+}
+
+function lineIndexById(id) {
+  return state.scriptLines.findIndex(line => String(line.id) === String(id));
+}
+
+function nextLineId() {
+  return Math.max(0, ...state.scriptLines.map(line => Number(line.id) || 0)) + 1;
+}
+
+function renumberLines() {
+  state.scriptLines.sort((a, b) => parseNum(a.start) - parseNum(b.start) || parseNum(a.end) - parseNum(b.end));
+  state.scriptLines.forEach((line, i) => line.index = i + 1);
+}
+
+function caretOffset(el) {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) return String(el.innerText || "").length;
+  const range = selection.getRangeAt(0);
+  const before = range.cloneRange();
+  before.selectNodeContents(el);
+  before.setEnd(range.endContainer, range.endOffset);
+  return before.toString().length;
+}
+
+function updateActiveRowClass() {
+  document.querySelectorAll("[data-line-id]").forEach(row => {
+    row.classList.toggle("active", String(row.dataset.lineId) === String(activeLineId));
+  });
+}
+
+function updateLineRowState(line) {
+  const row = document.querySelector(`[data-line-id="${CSS.escape(String(line.id))}"]`);
+  if (!row) return false;
+  row.classList.toggle("deleted", Boolean(line.deleted));
+  row.classList.toggle("active", String(line.id) === String(activeLineId));
+  return true;
+}
+
+function scrollActiveIntoView() {
+  const row = document.querySelector(`[data-line-id="${CSS.escape(String(activeLineId))}"]`);
+  if (row) row.scrollIntoView({ block: "center", behavior: "smooth" });
+}
+
+function setActive(id, rerender = true) {
+  activeLineId = Number(id);
+  if (rerender) renderRows();
+  else updateActiveRowClass();
+  renderMetrics();
+}
+
+function syncTextFromElement(el) {
+  if (!canEdit()) return;
+  const line = lineById(el.dataset.lineText);
+  if (!line) return;
+  line.text = String(el.innerText || "").replace(/\n/g, " ").trim();
+  setActive(line.id, false);
+  setDirty();
+  renderMetrics();
+}
+
+function splitLine(id, pos = null) {
+  if (!requireEdit()) return;
+  const line = lineById(id);
+  if (!line) return;
+  const text = String(line.text || "");
+  const cut = Math.max(0, Math.min(text.length, pos ?? Math.ceil(text.length / 2)));
+  const left = text.slice(0, cut).trim();
+  const right = text.slice(cut).trim();
+  const start = parseNum(line.start);
+  const end = Math.max(start + 0.05, parseNum(line.end));
+  const ratio = text.length ? cut / text.length : 1;
+  const mid = Math.max(start + 0.05, Math.min(end, start + (end - start) * ratio));
+  line.text = left;
+  line.end = mid;
+  const newLine = {
+    id: nextLineId(),
+    index: line.index + 1,
+    start: mid,
+    end: Math.max(mid + 0.05, end),
+    text: right,
+    deleted: Boolean(line.deleted),
+    source: line.source || "",
+  };
+  const idx = lineIndexById(id);
+  state.scriptLines.splice(idx + 1, 0, newLine);
+  renumberLines();
+  setDirty();
+  setActive(newLine.id);
+}
+
+function mergeWithPrevious(id) {
+  if (!requireEdit()) return;
+  const idx = lineIndexById(id);
+  if (idx <= 0) return;
+  const prev = state.scriptLines[idx - 1];
+  const line = state.scriptLines[idx];
+  prev.text = `${prev.text}${line.text ? " " + line.text : ""}`.trim();
+  prev.end = Math.max(parseNum(prev.end), parseNum(line.end));
+  prev.deleted = Boolean(prev.deleted || line.deleted);
+  state.scriptLines.splice(idx, 1);
+  renumberLines();
+  setDirty();
+  setActive(prev.id);
+}
+
+function mergeNext(id) {
+  if (!requireEdit()) return;
+  const idx = lineIndexById(id);
+  if (idx < 0 || idx >= state.scriptLines.length - 1) return;
+  const line = state.scriptLines[idx];
+  const next = state.scriptLines[idx + 1];
+  line.text = `${line.text}${next.text ? " " + next.text : ""}`.trim();
+  line.end = Math.max(parseNum(line.end), parseNum(next.end));
+  line.deleted = Boolean(line.deleted || next.deleted);
+  state.scriptLines.splice(idx + 1, 1);
+  renumberLines();
+  setDirty();
+  setActive(line.id);
+}
+
+function insertAfter(id) {
+  if (!requireEdit()) return;
+  const idx = lineIndexById(id);
+  if (idx < 0) return;
+  const line = state.scriptLines[idx];
+  const t = parseNum(line.end);
+  const newLine = {
+    id: nextLineId(),
+    index: line.index + 1,
+    start: t,
+    end: t + 0.05,
+    text: "",
+    deleted: false,
+    source: "manual",
+  };
+  state.scriptLines.splice(idx + 1, 0, newLine);
+  renumberLines();
+  setDirty();
+  setActive(newLine.id);
+}
+
+function toggleDelete(id) {
+  if (!requireEdit()) return;
+  const line = lineById(id);
+  if (!line) return;
+  line.deleted = !line.deleted;
+  activeLineId = Number(line.id);
+  setDirty();
+  if (showDeletedOnly) {
+    renderRows();
+  } else if (!updateLineRowState(line)) {
+    renderRows();
+  }
+  updateActiveRowClass();
+  renderMetrics();
+}
+
+function removeLine(id, confirmDelete = true) {
+  if (!requireEdit()) return;
+  const idx = lineIndexById(id);
+  if (idx < 0) return;
+  const line = state.scriptLines[idx];
+  if (confirmDelete && !confirm(`确定要删除第 ${line.index} 行？这会从审阅稿里移除这一行，不只是画删除线。`)) return;
+  state.scriptLines.splice(idx, 1);
+  renumberLines();
+  activeLineId = state.scriptLines[Math.max(0, idx - 1)]?.id || null;
+  setDirty();
+  renderAll();
+}
+
+function moveActive(delta) {
+  const rows = visibleLines();
+  if (!rows.length) return;
+  const current = rows.findIndex(line => String(line.id) === String(activeLineId));
+  const next = current < 0
+    ? (delta > 0 ? 0 : rows.length - 1)
+    : Math.max(0, Math.min(rows.length - 1, current + delta));
+  setActive(rows[next].id);
+  scrollActiveIntoView();
+}
+
+function jumpDeleted(delta) {
+  const deleted = state.scriptLines.filter(line => line.deleted);
+  if (!deleted.length) {
+    setStatus("当前没有删除线", "danger-text");
+    return;
+  }
+  const active = lineById(activeLineId);
+  const activeIndex = active ? active.index : (delta > 0 ? 0 : Number.MAX_SAFE_INTEGER);
+  let next = delta > 0
+    ? deleted.find(line => line.index > activeIndex) || deleted[0]
+    : [...deleted].reverse().find(line => line.index < activeIndex) || deleted[deleted.length - 1];
+  setActive(next.id);
+  scrollActiveIntoView();
+}
+
+function playRange(start, end) {
+  const media = document.querySelector("[data-active-media]");
+  if (!media) return;
+  if (stopHandler) {
+    media.removeEventListener("timeupdate", stopHandler);
+    stopHandler = null;
+  }
+  const stopAt = Number(end) + 0.25;
+  stopHandler = () => {
+    if (media.currentTime >= stopAt) {
+      media.pause();
+      media.removeEventListener("timeupdate", stopHandler);
+      stopHandler = null;
+    }
+  };
+  media.currentTime = Math.max(0, Number(start) - 0.15);
+  media.addEventListener("timeupdate", stopHandler);
+  media.play();
+}
+
+function handleConflict(data) {
+  saveConflict = data;
+  setStatus(`保存冲突：磁盘版本已经更新（当前版本 ${shortRevision(data.currentRevision)}）。请重载或强制覆盖。`, "danger-text");
+  renderAll();
+}
+
+async function saveState(force = false) {
+  if (busyMode) return;
+  if (!requireEdit()) return;
+  state.useScriptLines = true;
+  state.updatedAt = new Date().toISOString();
+  setBusy("saving");
+  setStatus(force ? "正在强制覆盖保存" : "正在保存");
+  try {
+    const res = await fetch(apiPath("/api/save"), {
+      method: "POST",
+      body: JSON.stringify({ state, baseRevision, force, lockToken }),
+    });
+    const data = await res.json();
+    if (res.status === 423 || data.locked) {
+      applyLockStatus({ locked: true, heldByMe: false, lock: data.lock });
+      setStatus(`保存失败：${data.lock?.ownerName || "其他浏览器"} 正在编辑。`, "danger-text");
+      return;
+    }
+    if (res.status === 409 || data.conflict) {
+      handleConflict(data);
+      return;
+    }
+    if (data.ok) {
+      baseRevision = data.revision || baseRevision;
+      dirty = false;
+      saveConflict = null;
+    }
+    renderAll();
+    setStatus(data.ok ? `已保存：${data.path}` : `保存失败：${data.error}`, data.ok ? "ok" : "danger-text");
+  } catch (err) {
+    setStatus(`保存失败：${err.message}`, "danger-text");
+  } finally {
+    setBusy("");
+  }
+}
+
+async function exportState(render = false) {
+  if (busyMode) return;
+  if (!requireEdit()) return;
+  state.useScriptLines = true;
+  state.updatedAt = new Date().toISOString();
+  setBusy(render ? "rendering" : "exporting");
+  setStatus(render ? "正在按删除线渲染预览，可能需要一段时间" : "正在导出");
+  try {
+    const res = await fetch(apiPath(render ? "/api/render" : "/api/export"), {
+      method: "POST",
+      body: JSON.stringify({ state, baseRevision, lockToken }),
+    });
+    const data = await res.json();
+    if (res.status === 423 || data.locked) {
+      applyLockStatus({ locked: true, heldByMe: false, lock: data.lock });
+      setStatus(`${render ? "渲染" : "导出"}失败：${data.lock?.ownerName || "其他浏览器"} 正在编辑。`, "danger-text");
+      return;
+    }
+    if (res.status === 409 || data.conflict) {
+      handleConflict(data);
+      return;
+    }
+    if (!data.ok) {
+      setStatus(`导出失败：${data.error}`, "danger-text");
+      return;
+    }
+    const r = data.result;
+    baseRevision = data.revision || baseRevision;
+    dirty = false;
+    saveConflict = null;
+    if (r.audioUrl || r.videoUrl || r.mediaUrl) {
+      const isVideo = Boolean(r.videoUrl);
+      const id = isVideo ? "rendered-video" : "rendered-audio";
+      meta.media = (meta.media || []).filter(item => item.id !== id);
+      meta.media.push({
+        id,
+        label: isVideo ? "渲染预览视频" : "渲染预览音频",
+        type: isVideo ? "video" : "audio",
+        url: `${r.videoUrl || r.audioUrl || r.mediaUrl}?t=${Date.now()}`,
+      });
+      activeMediaId = id;
+      renderMediaTabs();
+    }
+    renderExportResults(r);
+    renderAll();
+    setStatus(render ? "已导出并渲染预览" : "已导出文件", "ok");
+  } catch (err) {
+    setStatus(`${render ? "渲染" : "导出"}失败：${err.message}`, "danger-text");
+  } finally {
+    setBusy("");
+  }
+}
+
+document.addEventListener("input", (e) => {
+  const target = e.target;
+  if (target.id === "search") {
+    renderAll();
+    return;
+  }
+  if (target.dataset?.lineText) syncTextFromElement(target);
+});
+
+document.addEventListener("keydown", (e) => {
+  const textEl = e.target.closest?.("[data-line-text]");
+  const isEditable = Boolean(textEl) || ["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName);
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
+    e.preventDefault();
+    saveState(false);
+    return;
+  }
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "d") {
+    e.preventDefault();
+    if (activeLineId) toggleDelete(activeLineId);
+    return;
+  }
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "j") {
+    e.preventDefault();
+    if (activeLineId) mergeNext(activeLineId);
+    return;
+  }
+  if (!isEditable && e.key === "/") {
+    e.preventDefault();
+    $("search").focus();
+    return;
+  }
+  if (!isEditable && e.key.toLowerCase() === "p") {
+    e.preventDefault();
+    const line = lineById(activeLineId);
+    if (line) playRange(line.start, line.end);
+    return;
+  }
+  if (!isEditable && e.key.toLowerCase() === "j") {
+    e.preventDefault();
+    moveActive(1);
+    return;
+  }
+  if (!isEditable && e.key.toLowerCase() === "k") {
+    e.preventDefault();
+    moveActive(-1);
+    return;
+  }
+  if (e.key === "Escape") {
+    if ($("search").value) {
+      $("search").value = "";
+      renderAll();
+    }
+    if (document.activeElement?.blur) document.activeElement.blur();
+    return;
+  }
+  if (!textEl) return;
+  const id = textEl.dataset.lineText;
+  if ((e.key === "Backspace" || e.key === "Delete") && !String(lineById(id)?.text || "").trim()) {
+    e.preventDefault();
+    removeLine(id, false);
+    return;
+  }
+  if (e.key === "Enter") {
+    e.preventDefault();
+    syncTextFromElement(textEl);
+    splitLine(id, caretOffset(textEl));
+    return;
+  }
+  if (e.key === "Backspace" && caretOffset(textEl) === 0) {
+    e.preventDefault();
+    syncTextFromElement(textEl);
+    mergeWithPrevious(id);
+  }
+});
+
+document.addEventListener("paste", (e) => {
+  const textEl = e.target.closest?.("[data-line-text]");
+  if (!textEl) return;
+  if (!canEdit()) return;
+  e.preventDefault();
+  document.execCommand("insertText", false, e.clipboardData.getData("text/plain"));
+});
+
+document.addEventListener("click", (e) => {
+  const row = e.target.closest?.("[data-line-id]");
+  if (row) setActive(row.dataset.lineId, false);
+  const button = e.target.closest?.("button");
+  if (!button) return;
+  if (button.dataset.mediaTab) {
+    activeMediaId = button.dataset.mediaTab;
+    renderMediaTabs();
+    return;
+  }
+  if (button.dataset.playLine) {
+    const line = lineById(button.dataset.playLine);
+    if (line) playRange(line.start, line.end);
+  }
+  if (button.dataset.insertAfter) insertAfter(button.dataset.insertAfter);
+});
+
+window.addEventListener("beforeunload", (e) => {
+  if (!dirty) return;
+  e.preventDefault();
+  e.returnValue = "";
+});
+
+window.addEventListener("pagehide", () => {
+  if (!lockToken || !currentProjectId) return;
+  stopHeartbeat();
+  const body = JSON.stringify(lockPayload());
+  if (navigator.sendBeacon) {
+    navigator.sendBeacon(`/api/lock/release?project=${encodeURIComponent(currentProjectId)}`, body);
+  }
+});
+
+$("saveBtn").addEventListener("click", () => saveState(false));
+$("forceSaveBtn").addEventListener("click", () => {
+  if (!confirm("强制覆盖会用当前页面内容覆盖磁盘上的新版本。继续？")) return;
+  saveState(true);
+});
+$("exportBtn").addEventListener("click", () => exportState(false));
+$("renderBtn").addEventListener("click", () => exportState(true));
+$("acquireLockBtn").addEventListener("click", () => acquireLock(false));
+$("takeoverLockBtn").addEventListener("click", () => {
+  const owner = lockStatus?.lock?.ownerName || "其他浏览器";
+  if (!confirm(`确定接管 ${owner} 的编辑权？对方页面会变成只读。`)) return;
+  acquireLock(true);
+});
+$("releaseLockBtn").addEventListener("click", () => releaseLock());
+$("reloadBtn").addEventListener("click", () => {
+  if (!confirm("从本地状态重新载入，未保存的页面改动会丢失。继续？")) return;
+  loadData(currentProjectId, { force: true });
+});
+$("projectSelect").addEventListener("change", (e) => loadData(e.target.value));
+$("showDeleted").addEventListener("click", () => {
+  showDeletedOnly = !showDeletedOnly;
+  $("showDeleted").classList.toggle("active", showDeletedOnly);
+  renderAll();
+});
+$("prevDeleted").addEventListener("click", () => jumpDeleted(-1));
+$("nextDeleted").addEventListener("click", () => jumpDeleted(1));
+$("restoreSuggested").addEventListener("click", () => {
+  if (!requireEdit()) return;
+  const count = state.scriptLines.filter(line => String(line.source || "").startsWith("delete#")).length;
+  if (!confirm(`恢复建议删除线会重置当前所有删除线，并按来源重新标记 ${count} 行。继续？`)) return;
+  state.scriptLines.forEach(line => line.deleted = String(line.source || "").startsWith("delete#"));
+  setDirty();
+  renderAll();
+});
+$("clearDeleted").addEventListener("click", () => {
+  if (!requireEdit()) return;
+  const count = state.scriptLines.filter(line => line.deleted).length;
+  if (!confirm(`确定取消全部 ${count} 条删除线？这会暂时保留所有内容，需要保存后才写入磁盘。`)) return;
+  state.scriptLines.forEach(line => line.deleted = false);
+  setDirty();
+  renderAll();
+});
+
+if (location.protocol === "file:") {
+  setStatus("当前是 file:// 静态页，请打开 http://127.0.0.1:8765；静态页不能可靠保存、导出或读取最新稿。", "danger-text");
+} else {
+  loadProjects().catch(err => {
+    console.error(err);
+    setStatus(`载入失败：${err.message}`, "danger-text");
+  });
+}
+</script>

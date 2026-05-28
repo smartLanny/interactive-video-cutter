@@ -1,0 +1,6 @@
+Interactive Video Cutter includes original workflow code for local media review,
+ASR preprocessing, browser-based line review, and DaVinci/FCPXML handoff export.
+
+This repository does not redistribute Qwen model weights, FFmpeg, DaVinci
+Resolve, or Python package dependencies. Those components are installed or
+cached separately and remain subject to their own upstream licenses.

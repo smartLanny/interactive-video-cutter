@@ -1,0 +1,6 @@
+interface:
+  display_name: "Interactive Video Cutter"
+  short_description: "可移植口播视频审片、ASR、局域网审阅和 DaVinci 交付"
+  default_prompt: "Use $interactive-video-cutter to bootstrap dependencies, transcribe a Chinese narration video or audio file, create a review page, and export subtitles plus DaVinci handoff files."
+policy:
+  allow_implicit_invocation: true
