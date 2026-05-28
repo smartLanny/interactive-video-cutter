@@ -18,6 +18,8 @@ AUDIO_EXTS = {".aac", ".aiff", ".flac", ".m4a", ".mp3", ".ogg", ".wav", ".wma"}
 VIDEO_EXTS = {".m4v", ".mkv", ".mov", ".mp4", ".webm"}
 PACKED_SILENCE_THRESHOLD = 0.5
 PACKED_END_PUNCT = set("。！？!?；;")
+AUDIO_PROXY_SUFFIX = "_asr.m4a"
+AUDIO_PROXY_BITRATE = os.environ.get("INTERACTIVE_VIDEO_CUTTER_AUDIO_PROXY_BITRATE", "64k")
 
 
 def slugify(value: str) -> str:
@@ -50,6 +52,50 @@ def media_type(path: Path) -> str:
     return "video" if suffix else "audio"
 
 
+def audio_proxy_path(media: Path, workdir: Path) -> Path:
+    return workdir / "edit" / "audio" / f"{media.stem}{AUDIO_PROXY_SUFFIX}"
+
+
+def prepare_audio_proxy(media: Path, workdir: Path, refresh: bool = False) -> Path:
+    proxy = audio_proxy_path(media, workdir)
+    if proxy.exists() and proxy.stat().st_size > 0 and not refresh:
+        print(f"cached audio proxy: {proxy}", file=sys.stderr)
+        return proxy
+
+    proxy.parent.mkdir(parents=True, exist_ok=True)
+    tmp = proxy.with_name(f".{proxy.stem}.tmp{proxy.suffix}")
+    if tmp.exists():
+        tmp.unlink()
+    cmd = [
+        "ffmpeg",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-y",
+        "-i",
+        str(media),
+        "-map",
+        "0:a:0",
+        "-vn",
+        "-ac",
+        "1",
+        "-ar",
+        "16000",
+        "-c:a",
+        "aac",
+        "-b:a",
+        AUDIO_PROXY_BITRATE,
+        "-movflags",
+        "+faststart",
+        str(tmp),
+    ]
+    print("+", " ".join(cmd), file=sys.stderr)
+    subprocess.run(cmd, check=True)
+    tmp.replace(proxy)
+    print(f"saved audio proxy: {proxy}", file=sys.stderr)
+    return proxy
+
+
 def transcribe(
     media: Path,
     workdir: Path,
@@ -60,6 +106,7 @@ def transcribe(
     chunk_seconds: float | None = None,
     chunk_threshold_seconds: float | None = None,
     no_chunk: bool = False,
+    output_stem: str | None = None,
 ) -> Path:
     helper = status.get("transcription", {}).get("transcribeHelper")
     python = status.get("pythonRuntime", {}).get("venvPython") or sys.executable
@@ -77,11 +124,15 @@ def transcribe(
         str(media),
         "--edit-dir",
         str(edit_dir),
+    ]
+    if output_stem:
+        cmd.extend(["--output-stem", output_stem])
+    cmd.extend([
         "--language",
         language,
         "--backend",
         backend,
-    ]
+    ])
     if model:
         cmd.extend(["--model", model])
     if chunk_seconds:
@@ -92,7 +143,7 @@ def transcribe(
         cmd.append("--no-chunk")
     print("+", " ".join(cmd), file=sys.stderr)
     subprocess.run(cmd, check=True, stdout=sys.stderr, stderr=sys.stderr)
-    transcript = edit_dir / "transcripts" / f"{media.stem}.json"
+    transcript = edit_dir / "transcripts" / f"{output_stem or media.stem}.json"
     if not transcript.exists():
         raise SystemExit(f"transcript was not created: {transcript}")
     return transcript
@@ -104,7 +155,15 @@ def write_reference_copy(reference: Path, workdir: Path) -> Path:
     return dest
 
 
-def write_agent_brief(workdir: Path, media: Path, reference: Path, transcript: Path, state: Path) -> None:
+def write_agent_brief(
+    workdir: Path,
+    media: Path,
+    reference: Path,
+    transcript: Path,
+    state: Path,
+    audio_proxy: Path | None = None,
+) -> None:
+    audio_proxy_note = f"- ASR used extracted audio proxy `{audio_proxy}`; FCPXML and renders still target the original media.\n" if audio_proxy else ""
     brief = f"""# Preprocessing Brief
 
 This project was created automatically from media + reference script.
@@ -116,6 +175,7 @@ The import step has already generated timed review lines from `{transcript}`, th
 - Do not force unspoken reference text into the transcript.
 - Conservative deletion lines may already be marked for repeated speech, false starts, long gaps, or clearly discarded takes.
 - Keep `scriptLines[].start/end` on original media time.
+{audio_proxy_note}- FCPXML guidance should reference the original media path, not temporary ASR audio.
 - For quick review, read `{workdir / "edit" / "takes_packed.md"}` before opening raw transcript JSON.
 - Before sharing the page, inspect `{state}` once for obvious bad ASR matches or missed protected terms.
 
@@ -230,6 +290,8 @@ def main() -> int:
     parser.add_argument("--chunk-seconds", type=float, help="ASR chunk length in seconds for long media")
     parser.add_argument("--chunk-threshold-seconds", type=float, help="Use chunked ASR when media duration is at least this many seconds")
     parser.add_argument("--no-chunk-transcribe", action="store_true", help="Disable chunked ASR and transcribe whole extracted audio")
+    parser.add_argument("--no-audio-proxy", action="store_true", help="Pass video files directly to ASR instead of extracting a small AAC audio proxy")
+    parser.add_argument("--refresh-audio-proxy", action="store_true", help="Recreate an existing AAC audio proxy before transcription")
     parser.add_argument("--install-missing", action="store_true", help="Run bootstrap.py --install before transcription")
     parser.add_argument("--skip-transcribe", action="store_true", help="Only create project from existing --transcript-json")
     parser.add_argument("--transcript-json", help="Existing transcript JSON to use instead of running ASR")
@@ -254,12 +316,20 @@ def main() -> int:
 
     if args.transcript_json:
         transcript = Path(args.transcript_json).expanduser().resolve()
+        audio_proxy = None
     elif args.skip_transcribe:
         raise SystemExit("--skip-transcribe requires --transcript-json")
     else:
         status = ensure_bootstrap(args.install_missing)
+        audio_proxy = None
+        transcribe_media = media
+        output_stem = None
+        if media_type(media) == "video" and not args.no_audio_proxy:
+            audio_proxy = prepare_audio_proxy(media, workdir, args.refresh_audio_proxy)
+            transcribe_media = audio_proxy
+            output_stem = media.stem
         transcript = transcribe(
-            media,
+            transcribe_media,
             workdir,
             status,
             args.language,
@@ -268,6 +338,7 @@ def main() -> int:
             args.chunk_seconds,
             args.chunk_threshold_seconds,
             args.no_chunk_transcribe,
+            output_stem,
         )
 
     manifest = workdir / "interactive_review_manifest.json"
@@ -299,6 +370,8 @@ def main() -> int:
         "--davinci-media-path",
         args.davinci_media_path or str(media),
     ]
+    if audio_proxy:
+        cmd.extend(["--draft-media", str(audio_proxy)])
     if args.alignment_json:
         cmd.extend(["--alignment-json", str(Path(args.alignment_json).expanduser().resolve())])
     if args.delete_csv:
@@ -308,7 +381,7 @@ def main() -> int:
     print("+", " ".join(cmd), file=sys.stderr)
     proc = subprocess.run(cmd, check=True, text=True, capture_output=True)
     takes_packed = write_packed_transcript(transcript, workdir, media)
-    write_agent_brief(workdir, media, reference_copy, transcript, state)
+    write_agent_brief(workdir, media, reference_copy, transcript, state, audio_proxy)
     import_result = json.loads(proc.stdout) if proc.stdout.strip().startswith("{") else {}
     print(json.dumps({
         "projectId": project_id,
@@ -316,6 +389,7 @@ def main() -> int:
         "manifest": str(manifest),
         "state": str(state),
         "transcript": str(transcript),
+        "audioProxy": str(audio_proxy) if audio_proxy else "",
         "takesPacked": str(takes_packed),
         "reference": str(reference_copy),
         "scriptLines": import_result.get("scriptLines"),

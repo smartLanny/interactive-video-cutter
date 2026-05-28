@@ -262,6 +262,7 @@ def combine_text(parts: list[str]) -> str:
 def transcribe_chunked(
     media: Path,
     transcript_dir: Path,
+    output_stem: str,
     duration: float,
     chunk_seconds: float,
     backend: str,
@@ -269,7 +270,7 @@ def transcribe_chunked(
     model: str,
     aligner: str,
 ) -> dict[str, Any]:
-    chunk_dir = transcript_dir / f"{media.stem}.chunks"
+    chunk_dir = transcript_dir / f"{output_stem}.chunks"
     chunk_dir.mkdir(parents=True, exist_ok=True)
     all_words: list[dict[str, Any]] = []
     text_parts: list[str] = []
@@ -287,7 +288,7 @@ def transcribe_chunked(
                 payload = json.loads(chunk_json.read_text())
                 print(f"cached chunk {index + 1}/{chunk_count}: {chunk_json}", file=sys.stderr)
             else:
-                audio = tmp_dir / f"{media.stem}_chunk_{index:04d}.wav"
+                audio = tmp_dir / f"{output_stem}_chunk_{index:04d}.wav"
                 print(
                     f"extracting chunk {index + 1}/{chunk_count}: "
                     f"{start:.1f}s-{start + chunk_duration:.1f}s",
@@ -326,6 +327,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Transcribe media with local Qwen3-ASR and write transcript JSON.")
     parser.add_argument("media", type=Path)
     parser.add_argument("--edit-dir", type=Path, default=None)
+    parser.add_argument("--output-stem", help="Transcript JSON stem; defaults to the input media stem")
     parser.add_argument("--language", default="zh")
     parser.add_argument("--backend", choices=["mlx", "official"], default=os.environ.get("QWEN3_ASR_BACKEND", "mlx"))
     parser.add_argument("--model", default=DEFAULT_MODEL)
@@ -345,7 +347,10 @@ def main() -> int:
     edit_dir = (args.edit_dir or (media.parent / "edit")).expanduser().resolve()
     transcript_dir = edit_dir / "transcripts"
     transcript_dir.mkdir(parents=True, exist_ok=True)
-    out = transcript_dir / f"{media.stem}.json"
+    output_stem = Path(args.output_stem).name if args.output_stem else media.stem
+    if not output_stem:
+        output_stem = media.stem or "transcript"
+    out = transcript_dir / f"{output_stem}.json"
     if out.exists():
         print(f"cached: {out}")
         return 0
@@ -361,6 +366,7 @@ def main() -> int:
         payload = transcribe_chunked(
             media,
             transcript_dir,
+            output_stem,
             duration,
             args.chunk_seconds,
             args.backend,
@@ -370,7 +376,7 @@ def main() -> int:
         )
     else:
         with tempfile.TemporaryDirectory() as tmp:
-            audio = Path(tmp) / f"{media.stem}.wav"
+            audio = Path(tmp) / f"{output_stem}.wav"
             print(f"extracting audio: {media.name}", file=sys.stderr)
             run_ffmpeg_extract(media, audio)
             print(f"transcribing with {args.backend}: {args.model}", file=sys.stderr)

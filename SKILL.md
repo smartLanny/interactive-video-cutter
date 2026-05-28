@@ -11,13 +11,14 @@ Core rules:
 - Treat `interactive_review_state.json` as the human review source of truth.
 - The browser page must receive preprocessed content, not raw ASR. Follow `references/chinese_preprocess.md`: cache ASR, correct terms/numbers/model names from the reference script, segment by Chinese meaning, and pre-mark conservative deletion lines.
 - Audio is still source of truth. The reference script corrects terminology and punctuation/segmentation; it must not force text that was not spoken.
+- Video files use a lightweight AAC audio proxy by default for ASR and review guidance; FCPXML/export still references the original video media path.
 - Long media uses chunked ASR by default: 180 second chunks for media at or above 600 seconds, cached under `edit/transcripts/<media-stem>.chunks/`.
 - Imported skeleton lines default to kept unless an input explicitly marks a line deleted. For production projects, prefer alignment JSON or a pre-cleaned state over plain reference text.
 - Prefer the bundled scripts over rewriting glue code.
 
 Scripts:
 - `scripts/bootstrap.py`: checks ffmpeg/ffprobe, bundled transcription helper, Python ASR packages, and can best-effort install deps with `--install`.
-- `scripts/create_review_project.py`: from media + reference script, runs transcription when needed, creates manifest/state/workdir, and writes `edit/takes_packed.md` for compact agent review.
+- `scripts/create_review_project.py`: from media + reference script, creates a small video audio proxy when needed, runs transcription, creates manifest/state/workdir, and writes `edit/takes_packed.md` for compact agent review.
 - `scripts/preprocess_chinese.py`: turns Qwen transcript JSON into timed review lines, applies reference-script terminology/number/model cleanup, and suggests conservative deletion lines.
 - `scripts/start_review_server.py`: starts the bundled review server with a manifest.
 - `scripts/export_davinci_timeline.py`: loads the server module and writes the standard export package, including DaVinci FCPXML and subtitle alignment sidecars.
@@ -37,7 +38,7 @@ For a new review project, call `import_review_project.py` with explicit `--media
 
 New project workflow:
 1. Run `bootstrap.py --json`; if deps are missing, run `bootstrap.py --install` or follow its printed manual actions.
-2. Run `create_review_project.py --media <audio-or-video> --reference <script.md> --workdir <review-workdir>`. This uses the bundled transcribe helper and local Qwen3-ASR package when available, then runs the bundled Chinese preprocessing layer.
+2. Run `create_review_project.py --media <audio-or-video> --reference <script.md> --workdir <review-workdir>`. For video, this first writes `<workdir>/edit/audio/<media-stem>_asr.m4a`, then uses the bundled transcribe helper and local Qwen3-ASR package, and finally runs the bundled Chinese preprocessing layer.
 3. Use `edit/takes_packed.md` for fast agent reading, then inspect `interactive_review_state.json` for obvious missed protected terms or bad matches before sharing the page. Do not leave raw ASR in production review projects.
 4. Start the LAN server with `start_review_server.py --host 0.0.0.0 --manifest <review-workdir>/interactive_review_manifest.json`.
 5. After browser review, export with the page or `export_davinci_timeline.py --manifest <review-workdir>/interactive_review_manifest.json --format fcpxml`.

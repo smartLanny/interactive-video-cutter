@@ -675,7 +675,7 @@ async function loadData(projectId = currentProjectId, options = {}) {
   if (!Array.isArray(state.scriptLines)) state.scriptLines = [];
   $("pageTitle").textContent = meta.title || "交互式全文稿审片";
   document.title = meta.title || "交互式全文稿审片";
-  activeMediaId = (meta.media || [])[0]?.id || "";
+  activeMediaId = defaultMediaId(meta.media || []);
   renumberLines();
   renderAll();
   renderMediaTabs();
@@ -717,6 +717,11 @@ function activeMediaItem() {
   return (meta.media || []).find(item => item.id === activeMediaId) || (meta.media || [])[0];
 }
 
+function defaultMediaId(items) {
+  const draftAudio = (items || []).find(item => item.id === "draft" && item.type === "audio");
+  return (draftAudio || (items || [])[0] || {}).id || "";
+}
+
 function renderMediaTabs() {
   const items = meta.media || [];
   if (!items.length) {
@@ -724,7 +729,7 @@ function renderMediaTabs() {
     $("mediaMount").innerHTML = `<div class="empty">当前项目没有可预览媒体</div>`;
     return;
   }
-  if (!items.some(item => item.id === activeMediaId)) activeMediaId = items[0].id;
+  if (!items.some(item => item.id === activeMediaId)) activeMediaId = defaultMediaId(items);
   $("mediaTabs").innerHTML = items.map(item =>
     `<button class="small ${item.id === activeMediaId ? "active" : ""}" data-media-tab="${escapeHtml(item.id)}">${escapeHtml(item.label)}</button>`
   ).join("");

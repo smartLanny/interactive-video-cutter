@@ -42,12 +42,13 @@ interactive-video-cutter/
 
 2. `scripts/create_review_project.py`
    - Takes `--media`, `--reference`, and `--workdir`.
+   - For video inputs, creates `<workdir>/edit/audio/<media-stem>_asr.m4a` and uses that small AAC proxy for ASR.
    - Runs ASR unless `--transcript-json --skip-transcribe` is provided.
    - Calls `import_review_project.py` to create manifest and state.
    - Writes `<workdir>/edit/takes_packed.md` as a compact phrase-level transcript for agent review.
 
 3. `scripts/transcribe_qwen3.py`
-   - Extracts mono 16 kHz audio with FFmpeg.
+   - Extracts mono 16 kHz temporary audio chunks with FFmpeg from the selected ASR input.
    - Runs `mlx-qwen3-asr` on Apple Silicon or `qwen-asr` when requested.
    - Writes transcript JSON to `<workdir>/edit/transcripts/<media-stem>.json`.
    - Uses 180 second chunks for media at or above 600 seconds, caching chunks in `<media-stem>.chunks/`.
@@ -80,6 +81,7 @@ Project manifest:
 - `exportDir`: one export directory per project.
 - `mediaType`: `audio` or `video`.
 - `sourceMedia`: original source media.
+- `draftMedia`: optional review proxy media, typically the extracted AAC audio proxy for large videos.
 - `davinciMediaPath`: optional path visible to the editing machine.
 
 Review state:
@@ -105,7 +107,8 @@ Project setup also writes `<workdir>/edit/takes_packed.md` as a lightweight tran
 
 Video import and export are intentionally conservative:
 
-- ASR uses extracted audio only.
+- ASR uses an extracted AAC audio proxy by default for video inputs.
+- Browser review opens the proxy audio by default when it exists; the original video remains available as a separate media tab.
 - Visible review text is generated from ASR plus reference cleanup.
 - All review line timings stay on the original source-video timeline.
 - Deletions become source-time intervals.
@@ -139,7 +142,7 @@ Long-media ASR dry run:
 
 ```bash
 python3 scripts/transcribe_qwen3.py --help
-python3 scripts/create_review_project.py --help | rg 'chunk|no-chunk'
+python3 scripts/create_review_project.py --help | rg 'chunk|audio-proxy|no-chunk'
 ```
 
 Review workflow smoke test:
