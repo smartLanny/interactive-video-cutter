@@ -131,50 +131,22 @@ Dependency status:
 python3 scripts/bootstrap.py --json
 ```
 
-Audio smoke test:
+Review workflow smoke test:
 
 ```bash
-tmp=$(mktemp -d)
-say -v Tingting -o "$tmp/test.aiff" "欢迎收看装机宅六一八笔记本推荐"
-printf '欢迎收看装机宅 618 笔记本推荐。\n' > "$tmp/ref.txt"
-python3 scripts/create_review_project.py \
-  --media "$tmp/test.aiff" \
-  --reference "$tmp/ref.txt" \
-  --workdir "$tmp/review" \
-  --project-id smoke-audio \
-  --title SmokeAudio
+python3 scripts/smoke_review_project.py
 ```
 
-Video export smoke test:
+This uses a generated temp video, a tiny transcript JSON, and a delete interval CSV.
+It does not run ASR, download models, or touch real project media. It verifies project
+creation, state/manifest writing, SRT/FCPXML/alignment export, DaVinci handoff files,
+and direct preview rendering.
 
 ```bash
-tmp=$(mktemp -d)
-ffmpeg -hide_banner -loglevel error -y \
-  -f lavfi -i testsrc=size=640x360:rate=30:duration=2 \
-  -f lavfi -i sine=frequency=1000:sample_rate=44100:duration=2 \
-  -c:v libx264 -pix_fmt yuv420p -c:a aac -shortest "$tmp/test.mp4"
-printf '第一句保留。\n第二句删除。\n' > "$tmp/ref.txt"
-cat > "$tmp/transcript.json" <<'JSON'
-{"segments":[{"start":0.0,"end":0.9,"text":"第一句保留。"},{"start":1.0,"end":1.8,"text":"第二句删除。"}]}
-JSON
-cat > "$tmp/delete.csv" <<'CSV'
-start,end,duration,summary,reason,source
-1.0,1.8,0.8,第二句删除,test,test
-CSV
-python3 scripts/create_review_project.py \
-  --media "$tmp/test.mp4" \
-  --reference "$tmp/ref.txt" \
-  --workdir "$tmp/review" \
-  --project-id smoke-video \
-  --title SmokeVideo \
-  --transcript-json "$tmp/transcript.json" \
-  --delete-csv "$tmp/delete.csv" \
-  --skip-transcribe
-python3 scripts/export_davinci_timeline.py \
-  --manifest "$tmp/review/interactive_review_manifest.json" \
-  --project smoke-video \
-  --render
+python3 scripts/smoke_review_project.py --keep-temp
 ```
+
+Use `--keep-temp` only when you need to inspect the generated project after a failure.
 
 Sensitive path scan before publishing:
 
@@ -198,6 +170,7 @@ rg -n '(/Users/|/Volumes/|gho_|HF_TOKEN\s*=|HUGGINGFACE_HUB_TOKEN\s*=|password\s
 ```bash
 git status -sb
 python3 -m py_compile scripts/*.py assets/review_tool/interactive_review_server.py
+python3 scripts/smoke_review_project.py
 python3 scripts/bootstrap.py --json
 git diff --check
 git add .
