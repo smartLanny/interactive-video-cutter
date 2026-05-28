@@ -161,6 +161,11 @@ cp -R interactive-video-cutter "${CODEX_HOME:-$HOME/.codex}/skills/interactive-v
 
 Then ask Codex to use `$interactive-video-cutter` with a media path and reference script path.
 
+## Development And Handoff
+
+- [Development Guide](docs/DEVELOPMENT.md)
+- [Handoff Notes](docs/HANDOFF.md)
+
 ## Security Model
 
 - No login system is included.
