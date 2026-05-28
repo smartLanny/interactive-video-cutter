@@ -50,6 +50,7 @@ interactive-video-cutter/
    - Extracts mono 16 kHz audio with FFmpeg.
    - Runs `mlx-qwen3-asr` on Apple Silicon or `qwen-asr` when requested.
    - Writes transcript JSON to `<workdir>/edit/transcripts/<media-stem>.json`.
+   - Uses 180 second chunks for media at or above 600 seconds, caching chunks in `<media-stem>.chunks/`.
 
 4. `scripts/preprocess_chinese.py`
    - Converts ASR `words`, `segments`, or `text` into timed review lines.
@@ -132,6 +133,13 @@ Dependency status:
 
 ```bash
 python3 scripts/bootstrap.py --json
+```
+
+Long-media ASR dry run:
+
+```bash
+python3 scripts/transcribe_qwen3.py --help
+python3 scripts/create_review_project.py --help | rg 'chunk|no-chunk'
 ```
 
 Review workflow smoke test:

@@ -50,7 +50,17 @@ def media_type(path: Path) -> str:
     return "video" if suffix else "audio"
 
 
-def transcribe(media: Path, workdir: Path, status: dict, language: str, backend: str, model: str) -> Path:
+def transcribe(
+    media: Path,
+    workdir: Path,
+    status: dict,
+    language: str,
+    backend: str,
+    model: str,
+    chunk_seconds: float | None = None,
+    chunk_threshold_seconds: float | None = None,
+    no_chunk: bool = False,
+) -> Path:
     helper = status.get("transcription", {}).get("transcribeHelper")
     python = status.get("pythonRuntime", {}).get("venvPython") or sys.executable
     if not helper:
@@ -74,6 +84,12 @@ def transcribe(media: Path, workdir: Path, status: dict, language: str, backend:
     ]
     if model:
         cmd.extend(["--model", model])
+    if chunk_seconds:
+        cmd.extend(["--chunk-seconds", str(chunk_seconds)])
+    if chunk_threshold_seconds:
+        cmd.extend(["--chunk-threshold-seconds", str(chunk_threshold_seconds)])
+    if no_chunk:
+        cmd.append("--no-chunk")
     print("+", " ".join(cmd), file=sys.stderr)
     subprocess.run(cmd, check=True, stdout=sys.stderr, stderr=sys.stderr)
     transcript = edit_dir / "transcripts" / f"{media.stem}.json"
@@ -211,6 +227,9 @@ def main() -> int:
     parser.add_argument("--language", default="zh")
     parser.add_argument("--backend", default="mlx" if platform.system() == "Darwin" else "official")
     parser.add_argument("--model", default=os.environ.get("QWEN3_ASR_MODEL", "Qwen/Qwen3-ASR-1.7B"))
+    parser.add_argument("--chunk-seconds", type=float, help="ASR chunk length in seconds for long media")
+    parser.add_argument("--chunk-threshold-seconds", type=float, help="Use chunked ASR when media duration is at least this many seconds")
+    parser.add_argument("--no-chunk-transcribe", action="store_true", help="Disable chunked ASR and transcribe whole extracted audio")
     parser.add_argument("--install-missing", action="store_true", help="Run bootstrap.py --install before transcription")
     parser.add_argument("--skip-transcribe", action="store_true", help="Only create project from existing --transcript-json")
     parser.add_argument("--transcript-json", help="Existing transcript JSON to use instead of running ASR")
@@ -239,7 +258,17 @@ def main() -> int:
         raise SystemExit("--skip-transcribe requires --transcript-json")
     else:
         status = ensure_bootstrap(args.install_missing)
-        transcript = transcribe(media, workdir, status, args.language, args.backend, args.model)
+        transcript = transcribe(
+            media,
+            workdir,
+            status,
+            args.language,
+            args.backend,
+            args.model,
+            args.chunk_seconds,
+            args.chunk_threshold_seconds,
+            args.no_chunk_transcribe,
+        )
 
     manifest = workdir / "interactive_review_manifest.json"
     state = workdir / "interactive_review_state.json"

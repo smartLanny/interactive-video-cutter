@@ -11,6 +11,7 @@ Core rules:
 - Treat `interactive_review_state.json` as the human review source of truth.
 - The browser page must receive preprocessed content, not raw ASR. Follow `references/chinese_preprocess.md`: cache ASR, correct terms/numbers/model names from the reference script, segment by Chinese meaning, and pre-mark conservative deletion lines.
 - Audio is still source of truth. The reference script corrects terminology and punctuation/segmentation; it must not force text that was not spoken.
+- Long media uses chunked ASR by default: 180 second chunks for media at or above 600 seconds, cached under `edit/transcripts/<media-stem>.chunks/`.
 - Imported skeleton lines default to kept unless an input explicitly marks a line deleted. For production projects, prefer alignment JSON or a pre-cleaned state over plain reference text.
 - Prefer the bundled scripts over rewriting glue code.
 

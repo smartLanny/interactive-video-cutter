@@ -42,6 +42,8 @@ python3 scripts/bootstrap.py --install
 
 The repository does not include model weights. If the machine cannot download models, pre-seed the Hugging Face cache and set `HF_HOME` or `HUGGINGFACE_HUB_CACHE`.
 
+Long media is transcribed in chunks by default. Media at or above 600 seconds is split into 180 second ASR chunks, with resumable chunk JSON files under `edit/transcripts/<media-stem>.chunks/`. Tune with `--chunk-seconds` and `--chunk-threshold-seconds`, or pass `--no-chunk-transcribe` to force the old whole-file path.
+
 ## Quick Start
 
 Create a review project:
