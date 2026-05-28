@@ -162,6 +162,16 @@ def smoke(root: Path, keep_temp: bool) -> dict[str, Any]:
         create_result = parse_json_output(create_proc)
         manifest = Path(create_result["manifest"])
         takes_packed = Path(create_result["takesPacked"])
+        audio_proxy = Path(create_result["audioProxy"])
+        require_file(audio_proxy)
+        manifest_data = json.loads(manifest.read_text())
+        project = manifest_data["projects"][0]
+        if project.get("sourceMedia") != str(inputs["media"].resolve()):
+            raise RuntimeError("manifest sourceMedia did not point to the original video")
+        if project.get("draftMedia") != str(audio_proxy):
+            raise RuntimeError("manifest draftMedia did not point to the audio proxy")
+        if not audio_proxy.name.endswith("_asr.m4a"):
+            raise RuntimeError("audio proxy did not use the expected m4a path")
         require_file(takes_packed)
         packed_text = takes_packed.read_text()
         if "第一句保留" not in packed_text or "第二句删除" not in packed_text:
@@ -186,6 +196,7 @@ def smoke(root: Path, keep_temp: bool) -> dict[str, Any]:
             "tempDir": str(tmp_root),
             "manifest": str(manifest),
             "state": create_result.get("state"),
+            "audioProxy": str(audio_proxy),
             "takesPacked": str(takes_packed),
             "exportDir": str(export_dir),
             "estimatedDuration": export_result.get("estimatedDuration"),

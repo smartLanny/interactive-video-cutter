@@ -43,7 +43,7 @@ python3 scripts/bootstrap.py --install
 
 The repository does not include model weights. If the machine cannot download models, pre-seed the Hugging Face cache and set `HF_HOME` or `HUGGINGFACE_HUB_CACHE`.
 
-Video inputs are converted once to a small mono AAC proxy at `<workdir>/edit/audio/<media-stem>_asr.m4a` before ASR. The transcript JSON and chunk cache still use the original media stem, and FCPXML/render exports still reference the original video path. Pass `--no-audio-proxy` only when you need to force the old direct-video ASR path, or `--refresh-audio-proxy` to rebuild an existing proxy.
+Video inputs are converted once to a small mono AAC proxy at `<workdir>/edit/audio/<media-stem>_asr.m4a` before ASR or transcript import. The transcript JSON and chunk cache still use the original media stem, and FCPXML/render exports still reference the original video path. Pass `--no-audio-proxy` only when you need to force the old direct-video ASR path, or `--refresh-audio-proxy` to rebuild an existing proxy.
 
 Long media is transcribed in chunks by default. Media at or above 600 seconds is split into 180 second ASR chunks, with resumable chunk JSON files under `edit/transcripts/<media-stem>.chunks/`. Tune with `--chunk-seconds` and `--chunk-threshold-seconds`, or pass `--no-chunk-transcribe` to force the whole-file ASR path against the selected ASR input.
 

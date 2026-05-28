@@ -38,7 +38,7 @@ For a new review project, call `import_review_project.py` with explicit `--media
 
 New project workflow:
 1. Run `bootstrap.py --json`; if deps are missing, run `bootstrap.py --install` or follow its printed manual actions.
-2. Run `create_review_project.py --media <audio-or-video> --reference <script.md> --workdir <review-workdir>`. For video, this first writes `<workdir>/edit/audio/<media-stem>_asr.m4a`, then uses the bundled transcribe helper and local Qwen3-ASR package, and finally runs the bundled Chinese preprocessing layer.
+2. Run `create_review_project.py --media <audio-or-video> --reference <script.md> --workdir <review-workdir>`. For video, this first writes `<workdir>/edit/audio/<media-stem>_asr.m4a`; when ASR is needed it then uses the bundled transcribe helper and local Qwen3-ASR package, and finally runs the bundled Chinese preprocessing layer.
 3. Use `edit/takes_packed.md` for fast agent reading, then inspect `interactive_review_state.json` for obvious missed protected terms or bad matches before sharing the page. Do not leave raw ASR in production review projects.
 4. Start the LAN server with `start_review_server.py --host 0.0.0.0 --manifest <review-workdir>/interactive_review_manifest.json`.
 5. After browser review, export with the page or `export_davinci_timeline.py --manifest <review-workdir>/interactive_review_manifest.json --format fcpxml`.

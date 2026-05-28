@@ -42,7 +42,8 @@ interactive-video-cutter/
 
 2. `scripts/create_review_project.py`
    - Takes `--media`, `--reference`, and `--workdir`.
-   - For video inputs, creates `<workdir>/edit/audio/<media-stem>_asr.m4a` and uses that small AAC proxy for ASR.
+   - For video inputs, creates `<workdir>/edit/audio/<media-stem>_asr.m4a` and uses that small AAC proxy for ASR/review.
+   - Passes the probed source-media duration into the manifest so source-tail timing is not truncated to the last transcript line.
    - Runs ASR unless `--transcript-json --skip-transcribe` is provided.
    - Calls `import_review_project.py` to create manifest and state.
    - Writes `<workdir>/edit/takes_packed.md` as a compact phrase-level transcript for agent review.

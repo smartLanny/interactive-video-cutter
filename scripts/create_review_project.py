@@ -96,6 +96,26 @@ def prepare_audio_proxy(media: Path, workdir: Path, refresh: bool = False) -> Pa
     return proxy
 
 
+def probe_duration(media: Path) -> float | None:
+    proc = subprocess.run([
+        "ffprobe",
+        "-v",
+        "error",
+        "-show_entries",
+        "format=duration",
+        "-of",
+        "default=noprint_wrappers=1:nokey=1",
+        str(media),
+    ], text=True, capture_output=True)
+    if proc.returncode != 0:
+        return None
+    try:
+        duration = float((proc.stdout or "0").strip() or 0.0)
+    except ValueError:
+        return None
+    return duration if duration > 0 else None
+
+
 def transcribe(
     media: Path,
     workdir: Path,
@@ -313,18 +333,21 @@ def main() -> int:
     title = args.title or media.stem
     project_id = args.project_id or slugify(title)
     reference_copy = write_reference_copy(reference, workdir)
+    source_media_type = media_type(media)
+    source_duration = probe_duration(media)
+    audio_proxy = None
 
     if args.transcript_json:
         transcript = Path(args.transcript_json).expanduser().resolve()
-        audio_proxy = None
+        if source_media_type == "video" and not args.no_audio_proxy:
+            audio_proxy = prepare_audio_proxy(media, workdir, args.refresh_audio_proxy)
     elif args.skip_transcribe:
         raise SystemExit("--skip-transcribe requires --transcript-json")
     else:
         status = ensure_bootstrap(args.install_missing)
-        audio_proxy = None
         transcribe_media = media
         output_stem = None
-        if media_type(media) == "video" and not args.no_audio_proxy:
+        if source_media_type == "video" and not args.no_audio_proxy:
             audio_proxy = prepare_audio_proxy(media, workdir, args.refresh_audio_proxy)
             transcribe_media = audio_proxy
             output_stem = media.stem
@@ -356,7 +379,7 @@ def main() -> int:
         "--media",
         str(media),
         "--media-type",
-        media_type(media),
+        source_media_type,
         "--manifest-out",
         str(manifest),
         "--state-out",
@@ -370,6 +393,8 @@ def main() -> int:
         "--davinci-media-path",
         args.davinci_media_path or str(media),
     ]
+    if source_duration:
+        cmd.extend(["--duration", f"{source_duration:.3f}"])
     if audio_proxy:
         cmd.extend(["--draft-media", str(audio_proxy)])
     if args.alignment_json:
@@ -390,6 +415,7 @@ def main() -> int:
         "state": str(state),
         "transcript": str(transcript),
         "audioProxy": str(audio_proxy) if audio_proxy else "",
+        "sourceDuration": source_duration,
         "takesPacked": str(takes_packed),
         "reference": str(reference_copy),
         "scriptLines": import_result.get("scriptLines"),
