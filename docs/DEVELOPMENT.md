@@ -42,7 +42,7 @@ interactive-video-cutter/
 
 2. `scripts/create_review_project.py`
    - Takes `--media`, `--reference`, and `--workdir`.
-   - For video inputs, creates `<workdir>/edit/audio/<media-stem>_asr.m4a` and uses that small AAC proxy for ASR/review.
+   - For video inputs, creates `<workdir>/edit/audio/<media-stem>_asr.m4a` and uses that small AAC proxy for ASR and browser review playback.
    - Passes the probed source-media duration into the manifest so source-tail timing is not truncated to the last transcript line.
    - Runs ASR unless `--transcript-json --skip-transcribe` is provided.
    - Calls `import_review_project.py` to create manifest and state.
@@ -109,7 +109,7 @@ Project setup also writes `<workdir>/edit/takes_packed.md` as a lightweight tran
 Video import and export are intentionally conservative:
 
 - ASR uses an extracted AAC audio proxy by default for video inputs.
-- Browser review opens the proxy audio by default when it exists; the original video remains available as a separate media tab.
+- Browser review uses the proxy audio when it exists. Browser video preview is intentionally deferred; the original video remains the export source, not the review playback default.
 - Visible review text is generated from ASR plus reference cleanup.
 - All review line timings stay on the original source-video timeline.
 - Deletions become source-time intervals.

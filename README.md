@@ -7,7 +7,7 @@ This is not a SaaS app. It is designed to run on a trusted local editing/render 
 ## What It Does
 
 - Imports audio or video from a local/NAS path.
-- For video inputs, creates a lightweight AAC audio proxy for ASR/review guidance while keeping the original video as the edit source.
+- For video inputs, creates a lightweight AAC audio proxy for ASR and web review while keeping the original video as the edit/export source.
 - Runs local Qwen3-ASR, caches transcript JSON, and writes `edit/takes_packed.md` for agent review.
 - Uses the reference script to fix terms, numbers, model names, punctuation, and Chinese sentence breaks.
 - Opens a browser review page with one sentence per line.
@@ -43,7 +43,7 @@ python3 scripts/bootstrap.py --install
 
 The repository does not include model weights. If the machine cannot download models, pre-seed the Hugging Face cache and set `HF_HOME` or `HUGGINGFACE_HUB_CACHE`.
 
-Video inputs are converted once to a small mono AAC proxy at `<workdir>/edit/audio/<media-stem>_asr.m4a` before ASR or transcript import. The transcript JSON and chunk cache still use the original media stem, and FCPXML/render exports still reference the original video path. Pass `--no-audio-proxy` only when you need to force the old direct-video ASR path, or `--refresh-audio-proxy` to rebuild an existing proxy.
+Video inputs are converted once to a small mono AAC proxy at `<workdir>/edit/audio/<media-stem>_asr.m4a` before ASR or transcript import. The web review page uses that audio proxy for preview and transcript correction; browser video preview is intentionally out of scope for now. The transcript JSON and chunk cache still use the original media stem, and FCPXML/render exports still reference the original video path. Pass `--no-audio-proxy` only when you need to force the old direct-video ASR path, or `--refresh-audio-proxy` to rebuild an existing proxy.
 
 Long media is transcribed in chunks by default. Media at or above 600 seconds is split into 180 second ASR chunks, with resumable chunk JSON files under `edit/transcripts/<media-stem>.chunks/`. Tune with `--chunk-seconds` and `--chunk-threshold-seconds`, or pass `--no-chunk-transcribe` to force the whole-file ASR path against the selected ASR input.
 
@@ -117,7 +117,7 @@ Useful shortcuts:
 
 For video files, the workflow is:
 
-1. FFmpeg extracts a lightweight AAC audio proxy from the source video for ASR and browser review.
+1. FFmpeg extracts a lightweight AAC audio proxy from the source video for ASR and browser audio review.
 2. Qwen3-ASR produces transcript text and word-level timing when available.
 3. `edit/takes_packed.md` gives agents a compact transcript reading view.
 4. The reference script corrects obvious ASR issues without forcing unspoken text.
@@ -197,7 +197,7 @@ Then ask Codex to use `$interactive-video-cutter` with a media path and referenc
 ### 主要功能
 
 - 支持视频和音频输入。
-- 自动抽取轻量 `.m4a` 音频代理做 ASR，避免长视频转写时反复读取原始大文件。
+- 自动抽取轻量 `.m4a` 音频代理做 ASR 和网页审阅预览，避免长视频转写/审阅时反复读取原始大文件。
 - 用参考文案清洗 raw ASR，避免把 `618`、`DLSS 4.5`、`RTX 5070 Ti` 之类术语识别坏。
 - 审阅页是一整段文本，一句一行。
 - 删除线表示这一行会被剪掉；取消删除线表示保留。

@@ -326,16 +326,20 @@ def media_type_for(path: Path) -> str:
 
 
 def media_items(project: ProjectConfig) -> list[dict]:
-    items = [{
-        "id": "source",
-        "label": "原始视频" if project.media_type == "video" else "原始音频",
-        "type": project.media_type,
-        "url": f"/media/{project.id}/source",
-    }]
+    draft_is_audio = bool(project.draft_media and media_type_for(project.draft_media) == "audio")
+    if project.media_type == "video" and draft_is_audio:
+        items = []
+    else:
+        items = [{
+            "id": "source",
+            "label": "原始视频" if project.media_type == "video" else "原始音频",
+            "type": project.media_type,
+            "url": f"/media/{project.id}/source",
+        }]
     if project.draft_media:
         items.append({
             "id": "draft",
-            "label": "草案视频" if media_type_for(project.draft_media) == "video" else "草案音频",
+            "label": "草案视频" if media_type_for(project.draft_media) == "video" else "审阅音频",
             "type": media_type_for(project.draft_media),
             "url": f"/media/{project.id}/draft",
         })
