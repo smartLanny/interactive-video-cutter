@@ -24,6 +24,7 @@ APP_HTML = ROOT / "interactive_review_app.html"
 END_PUNCT = set("。！？!?；;")
 SOFT_PUNCT = set("，,、")
 LOCK_TTL_SECONDS = 75
+RENDER_AUDIO_FADE_SECONDS = 0.03
 PROJECTS: dict[str, "ProjectConfig"] = {}
 DEFAULT_PROJECT_ID = ""
 MANIFEST_PATH = DEFAULT_MANIFEST
@@ -1204,12 +1205,13 @@ def render_audio(project: ProjectConfig, segments: list[dict], output: Path) -> 
         duration = float(seg["end"]) - float(seg["start"])
         if duration < 0.08:
             continue
-        fade_out = max(0.0, duration - 0.025)
+        fade_out = max(0.0, duration - RENDER_AUDIO_FADE_SECONDS)
         label = f"a{i}"
         parts.append(
             f"[0:a]atrim=start={seg['start']:.3f}:end={seg['end']:.3f},"
             f"asetpts=PTS-STARTPTS,"
-            f"afade=t=in:st=0:d=0.025,afade=t=out:st={fade_out:.3f}:d=0.025"
+            f"afade=t=in:st=0:d={RENDER_AUDIO_FADE_SECONDS:.3f},"
+            f"afade=t=out:st={fade_out:.3f}:d={RENDER_AUDIO_FADE_SECONDS:.3f}"
             f"[{label}]"
         )
         labels.append(f"[{label}]")
@@ -1246,13 +1248,17 @@ def render_video(project: ProjectConfig, segments: list[dict], output: Path) -> 
             continue
         v_label = f"v{i}"
         a_label = f"a{i}"
+        fade_out = max(0.0, duration - RENDER_AUDIO_FADE_SECONDS)
         parts.append(
             f"[0:v]trim=start={seg['start']:.3f}:end={seg['end']:.3f},"
             f"setpts=PTS-STARTPTS[{v_label}]"
         )
         parts.append(
             f"[0:a]atrim=start={seg['start']:.3f}:end={seg['end']:.3f},"
-            f"asetpts=PTS-STARTPTS[{a_label}]"
+            f"asetpts=PTS-STARTPTS,"
+            f"afade=t=in:st=0:d={RENDER_AUDIO_FADE_SECONDS:.3f},"
+            f"afade=t=out:st={fade_out:.3f}:d={RENDER_AUDIO_FADE_SECONDS:.3f}"
+            f"[{a_label}]"
         )
         labels.append(f"[{v_label}][{a_label}]")
     if not labels:

@@ -44,6 +44,7 @@ interactive-video-cutter/
    - Takes `--media`, `--reference`, and `--workdir`.
    - Runs ASR unless `--transcript-json --skip-transcribe` is provided.
    - Calls `import_review_project.py` to create manifest and state.
+   - Writes `<workdir>/edit/takes_packed.md` as a compact phrase-level transcript for agent review.
 
 3. `scripts/transcribe_qwen3.py`
    - Extracts mono 16 kHz audio with FFmpeg.
@@ -97,6 +98,8 @@ Exports:
 - `davinci_timeline.fcpxml`: importable editing timeline.
 - `selected_delete_preview.mp4/.m4a`: optional FFmpeg render.
 
+Project setup also writes `<workdir>/edit/takes_packed.md` as a lightweight transcript reading view.
+
 ## Video Logic
 
 Video import and export are intentionally conservative:
@@ -107,7 +110,7 @@ Video import and export are intentionally conservative:
 - Deletions become source-time intervals.
 - Keep segments are calculated as the inverse of delete intervals.
 - FCPXML references the original media asset.
-- Direct render uses FFmpeg `trim/atrim` and `concat`.
+- Direct render uses FFmpeg `trim/atrim` and `concat`, with 30 ms audio fades at each keep-segment boundary.
 
 Default render encoder is `libx264`. For Apple Silicon preview renders:
 

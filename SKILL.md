@@ -16,7 +16,7 @@ Core rules:
 
 Scripts:
 - `scripts/bootstrap.py`: checks ffmpeg/ffprobe, bundled transcription helper, Python ASR packages, and can best-effort install deps with `--install`.
-- `scripts/create_review_project.py`: from media + reference script, runs transcription when needed and creates manifest/state/workdir.
+- `scripts/create_review_project.py`: from media + reference script, runs transcription when needed, creates manifest/state/workdir, and writes `edit/takes_packed.md` for compact agent review.
 - `scripts/preprocess_chinese.py`: turns Qwen transcript JSON into timed review lines, applies reference-script terminology/number/model cleanup, and suggests conservative deletion lines.
 - `scripts/start_review_server.py`: starts the bundled review server with a manifest.
 - `scripts/export_davinci_timeline.py`: loads the server module and writes the standard export package, including DaVinci FCPXML and subtitle alignment sidecars.
@@ -37,7 +37,7 @@ For a new review project, call `import_review_project.py` with explicit `--media
 New project workflow:
 1. Run `bootstrap.py --json`; if deps are missing, run `bootstrap.py --install` or follow its printed manual actions.
 2. Run `create_review_project.py --media <audio-or-video> --reference <script.md> --workdir <review-workdir>`. This uses the bundled transcribe helper and local Qwen3-ASR package when available, then runs the bundled Chinese preprocessing layer.
-3. Before sharing the page, inspect `interactive_review_state.json` for obvious missed protected terms or bad matches. Do not leave raw ASR in production review projects.
+3. Use `edit/takes_packed.md` for fast agent reading, then inspect `interactive_review_state.json` for obvious missed protected terms or bad matches before sharing the page. Do not leave raw ASR in production review projects.
 4. Start the LAN server with `start_review_server.py --host 0.0.0.0 --manifest <review-workdir>/interactive_review_manifest.json`.
 5. After browser review, export with the page or `export_davinci_timeline.py --manifest <review-workdir>/interactive_review_manifest.json --format fcpxml`.
 6. Deliver rendered media when requested, FCPXML, SRT, keep segments, handoff JSON/readme, and `*_text_time_alignment*` sidecars for AI marking.

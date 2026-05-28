@@ -16,6 +16,8 @@ BOOTSTRAP = Path(__file__).resolve().parent / "bootstrap.py"
 IMPORT_PROJECT = Path(__file__).resolve().parent / "import_review_project.py"
 AUDIO_EXTS = {".aac", ".aiff", ".flac", ".m4a", ".mp3", ".ogg", ".wav", ".wma"}
 VIDEO_EXTS = {".m4v", ".mkv", ".mov", ".mp4", ".webm"}
+PACKED_SILENCE_THRESHOLD = 0.5
+PACKED_END_PUNCT = set("。！？!?；;")
 
 
 def slugify(value: str) -> str:
@@ -98,11 +100,105 @@ The import step has already generated timed review lines from `{transcript}`, th
 - Do not force unspoken reference text into the transcript.
 - Conservative deletion lines may already be marked for repeated speech, false starts, long gaps, or clearly discarded takes.
 - Keep `scriptLines[].start/end` on original media time.
+- For quick review, read `{workdir / "edit" / "takes_packed.md"}` before opening raw transcript JSON.
 - Before sharing the page, inspect `{state}` once for obvious bad ASR matches or missed protected terms.
 
 Media: `{media}`
 """
     (workdir / "PREPROCESSING_BRIEF.md").write_text(brief)
+
+
+def format_time(seconds: float) -> str:
+    return f"{seconds:06.2f}"
+
+
+def format_duration(seconds: float) -> str:
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+    minutes = int(seconds // 60)
+    return f"{minutes}m {seconds - minutes * 60:04.1f}s"
+
+
+def token_text(items: list[dict]) -> str:
+    parts = [str(item.get("text") or "").strip() for item in items]
+    parts = [part for part in parts if part]
+    if any(re.search(r"[\u3400-\u9fff]", part) for part in parts):
+        return "".join(parts)
+    return " ".join(parts)
+
+
+def transcript_phrases(transcript: Path) -> list[dict]:
+    data = json.loads(transcript.read_text())
+    words = data.get("words") or []
+    phrases: list[dict] = []
+    current: list[dict] = []
+    previous_end: float | None = None
+
+    def flush() -> None:
+        nonlocal current
+        if not current:
+            return
+        text = token_text(current).strip()
+        if text:
+            phrases.append({
+                "start": float(current[0]["start"]),
+                "end": float(current[-1]["end"]),
+                "text": text,
+            })
+        current = []
+
+    for item in words:
+        text = str(item.get("text") or "").strip()
+        if not text or item.get("start") is None or item.get("end") is None:
+            continue
+        start = float(item["start"])
+        end = float(item["end"])
+        if previous_end is not None and start - previous_end >= PACKED_SILENCE_THRESHOLD:
+            flush()
+        current.append({"text": text, "start": start, "end": end})
+        if text[-1] in PACKED_END_PUNCT:
+            flush()
+        previous_end = max(previous_end or end, end)
+    flush()
+
+    if phrases:
+        return phrases
+
+    for segment in data.get("segments") or []:
+        text = str(segment.get("text") or "").strip()
+        if not text:
+            continue
+        start = float(segment.get("start", 0.0))
+        end = float(segment.get("end", start + max(1.0, len(text) / 8.0)))
+        phrases.append({"start": start, "end": max(start + 0.01, end), "text": text})
+    return phrases
+
+
+def write_packed_transcript(transcript: Path, workdir: Path, media: Path) -> Path:
+    edit_dir = workdir / "edit"
+    edit_dir.mkdir(parents=True, exist_ok=True)
+    phrases = transcript_phrases(transcript)
+    duration = phrases[-1]["end"] - phrases[0]["start"] if phrases else 0.0
+    lines = [
+        "# Packed transcript",
+        "",
+        f"Source: {media.name}",
+        f"Transcript: {transcript}",
+        f"Grouped on silences >= {PACKED_SILENCE_THRESHOLD:.1f}s when word timing is available.",
+        "",
+        f"## {media.stem}  (duration: {format_duration(duration)}, {len(phrases)} phrases)",
+    ]
+    if phrases:
+        for phrase in phrases:
+            lines.append(
+                f"  [{format_time(float(phrase['start']))}-{format_time(float(phrase['end']))}] {phrase['text']}"
+            )
+    else:
+        lines.append("  _no speech detected_")
+    lines.append("")
+    out = edit_dir / "takes_packed.md"
+    out.write_text("\n".join(lines))
+    return out
 
 
 def main() -> int:
@@ -182,6 +278,7 @@ def main() -> int:
         cmd.extend(["--source-fps", str(args.source_fps)])
     print("+", " ".join(cmd), file=sys.stderr)
     proc = subprocess.run(cmd, check=True, text=True, capture_output=True)
+    takes_packed = write_packed_transcript(transcript, workdir, media)
     write_agent_brief(workdir, media, reference_copy, transcript, state)
     import_result = json.loads(proc.stdout) if proc.stdout.strip().startswith("{") else {}
     print(json.dumps({
@@ -190,6 +287,7 @@ def main() -> int:
         "manifest": str(manifest),
         "state": str(state),
         "transcript": str(transcript),
+        "takesPacked": str(takes_packed),
         "reference": str(reference_copy),
         "scriptLines": import_result.get("scriptLines"),
         "next": f"python3 {SKILL_DIR}/scripts/start_review_server.py --host 0.0.0.0 --manifest {manifest}",

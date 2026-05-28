@@ -7,7 +7,7 @@ This is not a SaaS app. It is designed to run on a trusted local editing/render 
 ## What It Does
 
 - Imports audio or video from a local/NAS path.
-- Runs local Qwen3-ASR and caches transcript JSON.
+- Runs local Qwen3-ASR, caches transcript JSON, and writes `edit/takes_packed.md` for agent review.
 - Uses the reference script to fix terms, numbers, model names, punctuation, and Chinese sentence breaks.
 - Opens a browser review page with one sentence per line.
 - Lets reviewers toggle deletion lines with keyboard shortcuts.
@@ -114,12 +114,13 @@ For video files, the workflow is:
 
 1. FFmpeg extracts audio from the source video for ASR.
 2. Qwen3-ASR produces transcript text and word-level timing when available.
-3. The reference script corrects obvious ASR issues without forcing unspoken text.
-4. The review state stores `scriptLines[]` with original source-video `start/end` times.
-5. Deleted lines become source-time delete intervals.
-6. Export builds keep segments from the source timeline.
-7. FCPXML uses the original video as the source asset.
-8. Optional render uses FFmpeg `trim/atrim` + `concat` to make an edited `.mp4`.
+3. `edit/takes_packed.md` gives agents a compact transcript reading view.
+4. The reference script corrects obvious ASR issues without forcing unspoken text.
+5. The review state stores `scriptLines[]` with original source-video `start/end` times.
+6. Deleted lines become source-time delete intervals.
+7. Export builds keep segments from the source timeline.
+8. FCPXML uses the original video as the source asset.
+9. Optional render uses FFmpeg `trim/atrim` + `concat` with 30 ms audio fades at segment boundaries.
 
 Default video render encoding is `libx264`. Hardware encoders can be selected:
 
