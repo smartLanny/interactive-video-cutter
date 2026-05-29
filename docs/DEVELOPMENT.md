@@ -57,6 +57,7 @@ interactive-video-cutter/
 4. `scripts/preprocess_chinese.py`
    - Converts ASR `words`, `segments`, or `text` into timed review lines.
    - Uses reference text to correct terms, numbers, model names, punctuation, and sentence breaks.
+   - Uses reference matches to mark repeated takes for deletion and split long comma-heavy review lines.
    - Keeps audio/video ASR as source of truth; reference text must not add unspoken content.
 
 5. `assets/review_tool/interactive_review_server.py`

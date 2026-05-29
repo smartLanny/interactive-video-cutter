@@ -846,6 +846,23 @@ function scrollActiveIntoView() {
   if (row) row.scrollIntoView({ block: "center", behavior: "smooth" });
 }
 
+function placeCaretAtEnd(el) {
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  range.collapse(false);
+  const selection = window.getSelection();
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
+function focusLineText(id) {
+  const el = document.querySelector(`[data-line-text="${CSS.escape(String(id))}"]`);
+  if (!el) return false;
+  el.focus();
+  placeCaretAtEnd(el);
+  return true;
+}
+
 function setActive(id, rerender = true) {
   activeLineId = Number(id);
   if (rerender) renderRows();
@@ -973,7 +990,7 @@ function removeLine(id, confirmDelete = true) {
   renderAll();
 }
 
-function moveActive(delta) {
+function moveActive(delta, focusText = false) {
   const rows = visibleLines();
   if (!rows.length) return;
   const current = rows.findIndex(line => String(line.id) === String(activeLineId));
@@ -982,6 +999,7 @@ function moveActive(delta) {
     : Math.max(0, Math.min(rows.length - 1, current + delta));
   setActive(rows[next].id);
   scrollActiveIntoView();
+  if (focusText) requestAnimationFrame(() => focusLineText(rows[next].id));
 }
 
 function jumpDeleted(delta) {
@@ -1172,6 +1190,12 @@ document.addEventListener("keydown", (e) => {
   }
   if (!textEl) return;
   const id = textEl.dataset.lineText;
+  if (e.key === "Tab") {
+    e.preventDefault();
+    syncTextFromElement(textEl);
+    moveActive(e.shiftKey ? -1 : 1, true);
+    return;
+  }
   if ((e.key === "Backspace" || e.key === "Delete") && !String(lineById(id)?.text || "").trim()) {
     e.preventDefault();
     removeLine(id, false);

@@ -103,12 +103,14 @@ The page shows the whole script as editable lines:
 - Kept lines remain in the edited output.
 - Text edits are saved into `interactive_review_state.json`.
 - A project lock prevents two reviewers from silently overwriting each other.
+- Video projects use the extracted audio proxy for browser review; the original video remains the export/XML source.
 
 Useful shortcuts:
 
 - `Cmd/Ctrl + S`: save
 - `Cmd/Ctrl + D`: toggle delete line
 - `Enter`: split line
+- `Tab` / `Shift + Tab`: move editing focus to next/previous line
 - line-start `Backspace`: merge with previous line
 - `Cmd/Ctrl + J`: merge with next line
 - empty-line `Delete` / `Backspace`: remove the line
@@ -120,7 +122,7 @@ For video files, the workflow is:
 1. FFmpeg extracts a lightweight AAC audio proxy from the source video for ASR and browser audio review.
 2. Qwen3-ASR produces transcript text and word-level timing when available.
 3. `edit/takes_packed.md` gives agents a compact transcript reading view.
-4. The reference script corrects obvious ASR issues without forcing unspoken text.
+4. The reference script corrects obvious ASR issues, anchors repeated-take deletion, and guides long-line splitting without forcing unspoken text.
 5. The review state stores `scriptLines[]` with original source-video `start/end` times.
 6. Deleted lines become source-time delete intervals.
 7. Export builds keep segments from the source timeline.

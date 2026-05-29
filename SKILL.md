@@ -9,7 +9,7 @@ Use this skill when the user wants to open, initialize, or export the local revi
 
 Core rules:
 - Treat `interactive_review_state.json` as the human review source of truth.
-- The browser page must receive preprocessed content, not raw ASR. Follow `references/chinese_preprocess.md`: cache ASR, correct terms/numbers/model names from the reference script, segment by Chinese meaning, and pre-mark conservative deletion lines.
+- The browser page must receive preprocessed content, not raw ASR. Follow `references/chinese_preprocess.md`: cache ASR, correct terms/numbers/model names from the reference script, segment by Chinese meaning, use the reference script to mark repeated takes, and pre-mark conservative deletion lines.
 - Audio is still source of truth. The reference script corrects terminology and punctuation/segmentation; it must not force text that was not spoken.
 - Video files use a lightweight AAC audio proxy by default for ASR and web review playback; FCPXML/export still references the original video media path. Do not add browser video preview unless explicitly planned.
 - Long media uses chunked ASR by default: 180 second chunks for media at or above 600 seconds, cached under `edit/transcripts/<media-stem>.chunks/`.
@@ -19,7 +19,7 @@ Core rules:
 Scripts:
 - `scripts/bootstrap.py`: checks ffmpeg/ffprobe, bundled transcription helper, Python ASR packages, and can best-effort install deps with `--install`.
 - `scripts/create_review_project.py`: from media + reference script, creates a small video audio proxy when needed, runs transcription, creates manifest/state/workdir, and writes `edit/takes_packed.md` for compact agent review.
-- `scripts/preprocess_chinese.py`: turns Qwen transcript JSON into timed review lines, applies reference-script terminology/number/model cleanup, and suggests conservative deletion lines.
+- `scripts/preprocess_chinese.py`: turns Qwen transcript JSON into timed review lines, applies reference-script terminology/number/model cleanup, splits long review lines, and marks reference-matched repeated takes for deletion.
 - `scripts/start_review_server.py`: starts the bundled review server with a manifest.
 - `scripts/export_davinci_timeline.py`: loads the server module and writes the standard export package, including DaVinci FCPXML and subtitle alignment sidecars.
 - `scripts/import_review_project.py`: builds a manifest plus optional initial state from preprocessed text/timing inputs.

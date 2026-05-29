@@ -12,6 +12,8 @@ from typing import Any
 
 END_PUNCT = "。！？!?"
 SOFT_PUNCT = "，,、；;：:"
+MAX_REVIEW_LINE_CHARS = 42
+MAX_REVIEW_SOFT_PUNCT = 2
 CJK_DIGITS = {
     "0": "零〇",
     "1": "一幺壹",
@@ -192,14 +194,15 @@ def normalize_for_match(text: str) -> str:
     return re.sub(r"[^0-9a-z\u3400-\u9fff]+", "", text)
 
 
-def best_reference_match(text: str, reference_lines: list[str]) -> tuple[str | None, float]:
+def best_reference_match(text: str, reference_lines: list[str]) -> tuple[str | None, float, int | None]:
     norm_text = normalize_for_match(text)
     if len(norm_text) < 6:
-        return None, 0.0
+        return None, 0.0, None
     best_line: str | None = None
+    best_index: int | None = None
     best_score = 0.0
     text_len = len(norm_text)
-    for ref in reference_lines:
+    for ref_index, ref in enumerate(reference_lines):
         norm_ref = normalize_for_match(ref)
         if len(norm_ref) < 6:
             continue
@@ -209,10 +212,11 @@ def best_reference_match(text: str, reference_lines: list[str]) -> tuple[str | N
         score = difflib.SequenceMatcher(None, norm_text, norm_ref).ratio()
         if score > best_score:
             best_line = ref
+            best_index = ref_index
             best_score = score
     if best_score >= 0.82:
-        return best_line, best_score
-    return None, best_score
+        return best_line, best_score, best_index
+    return None, best_score, None
 
 
 def units_from_words(words: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -375,6 +379,89 @@ def mark_conservative_deletes(lines: list[dict[str, Any]]) -> None:
         previous = line
 
 
+def mark_reference_duplicate_takes(lines: list[dict[str, Any]]) -> None:
+    groups: dict[int, list[dict[str, Any]]] = {}
+    for line in lines:
+        ref_index = line.get("_referenceIndex")
+        if ref_index is None:
+            continue
+        text = normalize_for_match(str(line.get("text") or ""))
+        if len(text) < 8:
+            continue
+        groups.setdefault(int(ref_index), []).append(line)
+
+    for group in groups.values():
+        if len(group) <= 1:
+            continue
+        keep = max(
+            group,
+            key=lambda line: (
+                float(line.get("_referenceScore") or 0.0),
+                float(line.get("start") or 0.0),
+            ),
+        )
+        for line in group:
+            if line is keep:
+                continue
+            line["deleted"] = True
+            line["source"] = f"{line.get('source', '')} suggested-delete:reference-repeat".strip()
+
+
+def should_split_review_text(text: str) -> bool:
+    if len(cleanup_text(text)) > MAX_REVIEW_LINE_CHARS:
+        return True
+    soft_count = sum(text.count(ch) for ch in "，,、；;")
+    return soft_count >= MAX_REVIEW_SOFT_PUNCT
+
+
+def split_review_line(line: dict[str, Any]) -> list[dict[str, Any]]:
+    text = cleanup_text(str(line.get("text") or ""))
+    if not should_split_review_text(text):
+        return [line]
+
+    parts = [cleanup_text(part) for part in re.split(r"(?<=[，,、；;：:])", text)]
+    parts = [part for part in parts if part]
+    if len(parts) <= 1:
+        return [line]
+
+    start = float(line.get("start", 0.0))
+    end = max(start + 0.05, float(line.get("end", start + 0.05)))
+    span = end - start
+    total_chars = sum(max(1, len(part)) for part in parts)
+    cursor = start
+    split_lines: list[dict[str, Any]] = []
+    for part in parts:
+        part_span = span * max(1, len(part)) / total_chars
+        item = dict(line)
+        item["start"] = round(cursor, 3)
+        item["end"] = round(min(end, cursor + part_span), 3)
+        item["text"] = part
+        item["source"] = f"{item.get('source', '')} reference-split".strip()
+        split_lines.append(item)
+        cursor += part_span
+    split_lines[-1]["end"] = round(end, 3)
+    return split_lines
+
+
+def split_long_review_lines(lines: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    split_lines: list[dict[str, Any]] = []
+    for line in lines:
+        split_lines.extend(split_review_line(line))
+    return split_lines
+
+
+def finalize_lines(lines: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    finalized: list[dict[str, Any]] = []
+    for index, line in enumerate(lines, 1):
+        item = dict(line)
+        item.pop("_referenceIndex", None)
+        item.pop("_referenceScore", None)
+        item["id"] = index
+        item["index"] = index
+        finalized.append(item)
+    return finalized
+
+
 def preprocess_lines(lines: list[dict[str, Any]], reference_path: Path | None = None) -> list[dict[str, Any]]:
     reference_raw = reference_path.read_text() if reference_path and reference_path.exists() else ""
     rules = build_rules(reference_raw) if reference_raw else []
@@ -384,10 +471,12 @@ def preprocess_lines(lines: list[dict[str, Any]], reference_path: Path | None = 
     for index, line in enumerate(lines, 1):
         item = dict(line)
         text = apply_rules(str(item.get("text") or ""), rules) if rules else cleanup_text(str(item.get("text") or ""))
-        match, score = best_reference_match(text, reference_lines)
+        match, score, ref_index = best_reference_match(text, reference_lines)
         if match:
             text = cleanup_text(match)
             item["source"] = f"{item.get('source', '')} reference-match:{score:.2f}".strip()
+            item["_referenceIndex"] = ref_index
+            item["_referenceScore"] = score
         else:
             item["source"] = f"{item.get('source', '')} reference-normalized".strip()
         item["id"] = index
@@ -396,7 +485,8 @@ def preprocess_lines(lines: list[dict[str, Any]], reference_path: Path | None = 
         processed.append(item)
 
     mark_conservative_deletes(processed)
-    return processed
+    mark_reference_duplicate_takes(processed)
+    return finalize_lines(split_long_review_lines(processed))
 
 
 def main() -> int:
