@@ -1,6 +1,6 @@
 ---
 name: interactive-video-cutter
-description: Use for portable local long-form Chinese narration video/audio review workflows: bootstrap ASR/ffmpeg dependencies, transcribe media, create reference-corrected review projects, launch the LAN review page, and export subtitles, ASR time-alignment sidecars, rendered previews, and DaVinci/FCPXML handoff timelines.
+description: "Use for portable local long-form Chinese narration video/audio review workflows: bootstrap ASR/ffmpeg dependencies, transcribe media, create reference-corrected review projects, launch the LAN review page, and export subtitles, ASR time-alignment sidecars, rendered previews, and DaVinci/FCPXML handoff timelines."
 ---
 
 # Interactive Video Cutter
