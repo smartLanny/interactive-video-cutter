@@ -320,7 +320,7 @@
   <div class="bar">
     <div>
       <h1 id="pageTitle">交互式全文稿审片</h1>
-      <div class="sub">一行一句；删除线行会被剪掉，取消删除线就保留。Enter 拆行；行首 Backspace 合并上行；⌘J/Ctrl+J 合并下行；空行 Delete 删行；⌘D/Ctrl+D 切换删除线。</div>
+      <div class="sub">一行一句；删除线行会被剪掉，取消删除线就保留。↑/↓ 切换审阅行；Enter 拆行；行首 Backspace 合并上行；⌘J/Ctrl+J 合并下行；空行 Delete 删行；⌘D/Ctrl+D 切换删除线。</div>
       <div class="project-row">
         <label for="projectSelect" class="sub">项目</label>
         <select id="projectSelect"></select>
@@ -1179,6 +1179,14 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
     moveActive(-1);
     return;
+  }
+  if (!e.metaKey && !e.ctrlKey && !e.altKey && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+    if (textEl || !isEditable) {
+      e.preventDefault();
+      if (textEl) syncTextFromElement(textEl);
+      moveActive(e.key === "ArrowDown" ? 1 : -1, Boolean(textEl));
+      return;
+    }
   }
   if (e.key === "Escape") {
     if ($("search").value) {

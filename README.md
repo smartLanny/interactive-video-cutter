@@ -109,6 +109,7 @@ Useful shortcuts:
 
 - `Cmd/Ctrl + S`: save
 - `Cmd/Ctrl + D`: toggle delete line
+- `ArrowDown` / `ArrowUp`: move to next/previous review line
 - `Enter`: split line
 - `Tab` / `Shift + Tab`: move editing focus to next/previous line
 - line-start `Backspace`: merge with previous line
@@ -257,6 +258,7 @@ http://<剪辑机IP>:8765
 
 - `Cmd/Ctrl + S`：保存
 - `Cmd/Ctrl + D`：切换删除线
+- `ArrowDown` / `ArrowUp`：切换到下一/上一条审阅行
 - `Enter`：拆行
 - 行首 `Backspace`：并入上一行
 - `Cmd/Ctrl + J`：并入下一行
