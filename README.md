@@ -8,7 +8,7 @@ This is not a SaaS app. It is designed to run on a trusted local editing/render 
 
 - Imports audio or video from a local/NAS path.
 - For video inputs, creates a lightweight AAC audio proxy for ASR and web review while keeping the original video as the edit/export source.
-- Runs local Qwen3-ASR, caches transcript JSON, and writes `edit/takes_packed.md` for agent review.
+- Runs local Qwen3-ASR, caches transcript JSON, and writes `edit/takes_packed.md`, `edit/reference_review_report.md`, and compact review artifacts for agent review.
 - Uses the reference script to fix terms, numbers, model names, punctuation, and Chinese sentence breaks.
 - Opens a browser review page with one sentence per line.
 - Lets reviewers toggle deletion lines with keyboard shortcuts.
@@ -39,13 +39,21 @@ python3 scripts/bootstrap.py --install
 - `ffmpeg` and `ffprobe`
 - a Python virtual environment under `~/.local/share/interactive-video-cutter/.venv`
 - `mlx-qwen3-asr` on Apple Silicon, or `qwen-asr` on other platforms
-- local Hugging Face caches for `Qwen/Qwen3-ASR-1.7B` and `Qwen/Qwen3-ForcedAligner-0.6B`
+- local Hugging Face caches for `Qwen/Qwen3-ASR-0.6B` or `Qwen/Qwen3-ASR-1.7B`, plus `Qwen/Qwen3-ForcedAligner-0.6B`
 
 The repository does not include model weights. If the machine cannot download models, pre-seed the Hugging Face cache and set `HF_HOME` or `HUGGINGFACE_HUB_CACHE`.
 
 Video inputs are converted once to a small mono AAC proxy at `<workdir>/edit/audio/<media-stem>_asr.m4a` before ASR or transcript import. The web review page uses that audio proxy for preview and transcript correction; browser video preview is intentionally out of scope for now. The transcript JSON and chunk cache still use the original media stem, and FCPXML/render exports still reference the original video path. Pass `--no-audio-proxy` only when you need to force the old direct-video ASR path, or `--refresh-audio-proxy` to rebuild an existing proxy.
 
 Long media is transcribed in chunks by default. Media at or above 600 seconds is split into 180 second ASR chunks, with resumable chunk JSON files under `edit/transcripts/<media-stem>.chunks/`. Tune with `--chunk-seconds` and `--chunk-threshold-seconds`, or pass `--no-chunk-transcribe` to force the whole-file ASR path against the selected ASR input.
+
+ASR profiles are available on project creation and direct transcription:
+
+- `--asr-profile auto`: default; uses `fast` for long media and `quality` for short media.
+- `--asr-profile fast`: `Qwen/Qwen3-ASR-0.6B`, faster and useful for full-length long narration drafts.
+- `--asr-profile quality`: `Qwen/Qwen3-ASR-1.7B`, slower but more accurate for dense technical ranges or final local reruns.
+
+ASR terminology context is opt-in. `create_review_project.py --asr-context` writes `<workdir>/edit/asr_context.txt` from a compact reference-derived term list and passes it to Qwen3-ASR; `--asr-context-file` passes an explicit context file. Do not use global context as the default for long narration: it can bias or truncate first-pass ASR. Prefer no-context `fast` for the first transcript, then rerun dense technical ranges with `quality` plus a short local context when needed. Transcript caches include the context hash so context and no-context runs do not silently share outputs.
 
 ## Quick Start
 
@@ -121,14 +129,19 @@ Useful shortcuts:
 For video files, the workflow is:
 
 1. FFmpeg extracts a lightweight AAC audio proxy from the source video for ASR and browser audio review.
-2. Qwen3-ASR produces transcript text and word-level timing when available.
-3. `edit/takes_packed.md` gives agents a compact transcript reading view.
-4. The reference script corrects obvious ASR issues, anchors repeated-take deletion, and guides long-line splitting without forcing unspoken text.
-5. The review state stores `scriptLines[]` with original source-video `start/end` times.
-6. Deleted lines become source-time delete intervals.
-7. Export builds keep segments from the source timeline.
-8. FCPXML uses the original video as the source asset.
-9. Optional render uses FFmpeg `trim/atrim` + `concat` with 30 ms audio fades at segment boundaries.
+2. Qwen3-ASR produces transcript text and word-level timing when available. The default first pass does not use global ASR context.
+3. Optional targeted reruns may pass a short terminology context for dense technical ranges.
+4. `edit/takes_packed.md` gives agents a compact transcript reading view.
+5. A middle-thinking Direct EDL pass creates a compact keep/delete/review plan with evidence `lineIds`.
+6. A take-clustering validator checks the Direct EDL plan for missing-reference gaps, orphan tails, truncated/time-overlap lines, repeated-take chains, and dense metric/protected-term runs.
+7. Only Direct EDL and clustering conflicts, plus low-confidence audio questions, become browser/manual review items. Line-level `semantic_review_packets.jsonl` is a residual QA surface, not the primary review queue.
+8. Structured LLM suggestions can be imported with `scripts/apply_semantic_review_suggestions.py`; by default deletes stay high-confidence only while medium-confidence text replacements and re-splits may apply.
+9. The reference script corrects obvious ASR issues, anchors repeated-take deletion, and guides long-line splitting without forcing unspoken text.
+10. The review state stores `scriptLines[]` with original source-video `start/end` times.
+11. Deleted lines become source-time delete intervals.
+12. Export builds keep segments from the source timeline.
+13. FCPXML uses the original video as the source asset.
+14. Optional render uses FFmpeg `trim/atrim` + `concat` with 30 ms audio fades at segment boundaries.
 
 Default video render encoding is `libx264`. Hardware encoders can be selected:
 

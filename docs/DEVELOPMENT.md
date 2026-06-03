@@ -45,16 +45,24 @@ interactive-video-cutter/
    - For video inputs, creates `<workdir>/edit/audio/<media-stem>_asr.m4a` and uses that small AAC proxy for ASR and browser review playback.
    - Passes the probed source-media duration into the manifest so source-tail timing is not truncated to the last transcript line.
    - Runs ASR unless `--transcript-json --skip-transcribe` is provided.
+   - Optionally builds `<workdir>/edit/asr_context.txt` from reference-script terminology when `--asr-context` or `--asr-context-file` is used. The default first pass does not use global ASR context.
    - Calls `import_review_project.py` to create manifest and state.
    - Writes `<workdir>/edit/takes_packed.md` as a compact phrase-level transcript for agent review.
+   - Writes `<workdir>/edit/reference_review_report.md` and `<workdir>/edit/semantic_review_packets.jsonl`. Long-form review should use Direct EDL plus take-clustering validation as the primary review path; packets are a residual QA surface.
 
-3. `scripts/transcribe_qwen3.py`
+3. `scripts/apply_semantic_review_suggestions.py`
+   - Applies structured LLM semantic review suggestions to `interactive_review_state.json`.
+   - Defaults to action-aware confidence: delete/restore require `high`, replace/re-split allow `high` or `medium`.
+   - Marks low-confidence suggestions, and medium-confidence delete/restore suggestions, as QA flags for browser review instead of applying them.
+
+4. `scripts/transcribe_qwen3.py`
    - Extracts mono 16 kHz temporary audio chunks with FFmpeg from the selected ASR input.
    - Runs `mlx-qwen3-asr` on Apple Silicon or `qwen-asr` when requested.
    - Writes transcript JSON to `<workdir>/edit/transcripts/<media-stem>.json`.
    - Uses 180 second chunks for media at or above 600 seconds, caching chunks in `<media-stem>.chunks/`.
+   - Accepts `--context` / `--context-file`; transcript and chunk caches include the context hash, including the empty no-context hash.
 
-4. `scripts/preprocess_chinese.py`
+5. `scripts/preprocess_chinese.py`
    - Converts ASR `words`, `segments`, or `text` into timed review lines.
    - Uses reference text to correct terms, numbers, model names, punctuation, and sentence breaks.
    - Uses reference matches to mark repeated takes for deletion and split long comma-heavy review lines.
@@ -103,7 +111,7 @@ Exports:
 - `davinci_timeline.fcpxml`: importable editing timeline.
 - `selected_delete_preview.mp4/.m4a`: optional FFmpeg render.
 
-Project setup also writes `<workdir>/edit/takes_packed.md` as a lightweight transcript reading view.
+Project setup also writes `<workdir>/edit/takes_packed.md` as a lightweight transcript reading view and `<workdir>/edit/semantic_review_packets.jsonl` for focused LLM follow-up. The fast review path is Direct EDL first, take-clustering validator second, browser review only for conflicts and low-confidence audio questions.
 
 ## Video Logic
 

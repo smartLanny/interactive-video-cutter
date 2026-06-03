@@ -9,7 +9,14 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from preprocess_chinese import lines_from_transcript_data, preprocess_lines
+from preprocess_chinese import (
+    DEFAULT_PAUSE_DELETE_THRESHOLD,
+    build_reference_review,
+    lines_from_transcript_data,
+    preprocess_lines,
+    preprocess_payload,
+    preprocess_transcript_payload,
+)
 
 
 DEFAULT_PROJECT_ROOT = Path.cwd()
@@ -78,6 +85,16 @@ def lines_from_transcript_json(path: Path, reference_path: Path | None = None) -
     data = read_json(path)
     lines = lines_from_transcript_data(data)
     return preprocess_lines(lines, reference_path)
+
+
+def payload_from_transcript_json(
+    path: Path,
+    reference_path: Path | None = None,
+    preprocess_mode: str = "reference-grouped",
+    pause_threshold: float = DEFAULT_PAUSE_DELETE_THRESHOLD,
+) -> dict[str, Any]:
+    data = read_json(path)
+    return preprocess_transcript_payload(data, reference_path, preprocess_mode, pause_threshold)
 
 
 def lines_from_alignment_json(path: Path) -> list[dict[str, Any]]:
@@ -165,6 +182,10 @@ def build_manifest(args: argparse.Namespace, duration: float) -> dict[str, Any]:
         str(export_dir),
         str(manifest_out.parent),
     })
+    for optional_path in (args.draft_media, args.srt, args.delete_csv, args.alignment_json, args.transcript_json):
+        if optional_path:
+            allowed_roots.append(str(Path(optional_path).expanduser().resolve().parent))
+    allowed_roots = sorted(set(allowed_roots))
     project = {
         "id": args.project_id,
         "title": args.title or args.project_id,
@@ -221,6 +242,8 @@ def main() -> int:
     parser.add_argument("--alignment-json")
     parser.add_argument("--transcript-json")
     parser.add_argument("--reference-text")
+    parser.add_argument("--preprocess-mode", choices=["reference-grouped", "flat"])
+    parser.add_argument("--pause-threshold", type=float, default=DEFAULT_PAUSE_DELETE_THRESHOLD)
     parser.add_argument("--source-label", default="")
     parser.add_argument("--source-fps", type=float)
     parser.add_argument("--source-timecode-start", default="00:00:00:00")
@@ -230,6 +253,8 @@ def main() -> int:
     args = parser.parse_args()
 
     lines: list[dict[str, Any]] = []
+    reference_review: dict[str, Any] | None = None
+    preprocess_mode = args.preprocess_mode or ("reference-grouped" if args.reference_text else "flat")
     if args.alignment_json:
         lines = lines_from_alignment_json(Path(args.alignment_json).expanduser().resolve())
     if not lines and args.srt:
@@ -239,11 +264,26 @@ def main() -> int:
         ]
     if not lines and args.transcript_json:
         reference_path = Path(args.reference_text).expanduser().resolve() if args.reference_text else None
-        lines = lines_from_transcript_json(Path(args.transcript_json).expanduser().resolve(), reference_path)
+        payload = payload_from_transcript_json(
+            Path(args.transcript_json).expanduser().resolve(),
+            reference_path,
+            preprocess_mode,
+            args.pause_threshold,
+        )
+        lines = payload.get("scriptLines", [])
+        reference_review = payload.get("referenceReview")
     if not lines and args.reference_text:
         lines = split_reference_text(Path(args.reference_text).expanduser().resolve())
     if args.delete_csv:
         apply_delete_intervals(lines, load_delete_intervals(Path(args.delete_csv).expanduser().resolve()))
+    if reference_review:
+        reference_review = build_reference_review(
+            lines,
+            reference_review.get("referenceLines", []),
+            reference_review.get("protectedTerms", []),
+            mode=preprocess_mode,
+            pause_threshold=args.pause_threshold,
+        )
 
     duration = infer_duration(lines, args.duration, Path(args.media).expanduser().resolve())
     ensure_placeholder_inputs(args)
@@ -263,12 +303,15 @@ def main() -> int:
             "useScriptLines": True,
             "updatedAt": None,
         }
+        if reference_review:
+            state["referenceReview"] = reference_review
         write_json(Path(args.state_out).expanduser().resolve(), state)
 
     print(json.dumps({
         "manifest": str(Path(args.manifest_out).expanduser().resolve()),
         "state": None if args.no_state else str(Path(args.state_out).expanduser().resolve()),
         "scriptLines": len(lines),
+        "referenceGroups": len(reference_review.get("groups", [])) if reference_review else 0,
         "duration": duration,
     }, ensure_ascii=False, indent=2))
     return 0

@@ -2,9 +2,12 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import inspect
 import json
 import math
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -12,10 +15,73 @@ from pathlib import Path
 from typing import Any
 
 
-DEFAULT_MODEL = os.environ.get("QWEN3_ASR_MODEL", "Qwen/Qwen3-ASR-1.7B")
+ASR_PROFILE_MODELS = {
+    "fast": "Qwen/Qwen3-ASR-0.6B",
+    "quality": "Qwen/Qwen3-ASR-1.7B",
+}
+ASR_PROFILE_CHOICES = ("auto", "fast", "quality")
+DEFAULT_ASR_PROFILE = os.environ.get("INTERACTIVE_VIDEO_CUTTER_ASR_PROFILE", "auto")
+if DEFAULT_ASR_PROFILE not in ASR_PROFILE_CHOICES:
+    DEFAULT_ASR_PROFILE = "auto"
 DEFAULT_ALIGNER = os.environ.get("QWEN3_ASR_ALIGNER", "Qwen/Qwen3-ForcedAligner-0.6B")
 DEFAULT_CHUNK_SECONDS = float(os.environ.get("INTERACTIVE_VIDEO_CUTTER_ASR_CHUNK_SECONDS", "180"))
 DEFAULT_CHUNK_THRESHOLD_SECONDS = float(os.environ.get("INTERACTIVE_VIDEO_CUTTER_ASR_CHUNK_THRESHOLD_SECONDS", "600"))
+DEFAULT_MAX_CONTEXT_CHARS = int(os.environ.get("INTERACTIVE_VIDEO_CUTTER_ASR_CONTEXT_CHARS", "2000"))
+
+
+def resolve_asr_profile(profile: str, duration: float, chunk_threshold_seconds: float) -> str:
+    if profile != "auto":
+        return profile
+    return "fast" if duration >= chunk_threshold_seconds else "quality"
+
+
+def resolve_asr_model(profile: str, model_override: str | None) -> str:
+    if model_override:
+        return model_override
+    return ASR_PROFILE_MODELS[profile]
+
+
+def normalize_context(value: str) -> str:
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def read_asr_context(context: str | None, context_file: Path | None, max_chars: int) -> str:
+    parts: list[str] = []
+    if context_file:
+        path = context_file.expanduser().resolve()
+        if not path.exists():
+            raise SystemExit(f"context file not found: {path}")
+        parts.append(path.read_text())
+    if context:
+        parts.append(context)
+    value = normalize_context("\n".join(parts))
+    if max_chars > 0 and len(value) > max_chars:
+        clipped = value[:max_chars].rsplit(" ", 1)[0].strip()
+        value = clipped or value[:max_chars].strip()
+    return value
+
+
+def context_hash(context: str) -> str:
+    if not context:
+        return ""
+    return hashlib.sha256(context.encode("utf-8")).hexdigest()[:16]
+
+
+def cached_payload(path: Path, model: str, asr_context_hash: str) -> dict[str, Any] | None:
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text())
+    except Exception:
+        return None
+    metadata = payload.get("metadata") or {}
+    cached_model = metadata.get("model_id")
+    cached_context_hash = metadata.get("asr_context_hash", "")
+    if cached_model and cached_model != model:
+        return None
+    if cached_context_hash != asr_context_hash:
+        return None
+    return payload
 
 
 def run_ffmpeg_extract(media: Path, audio: Path) -> None:
@@ -181,7 +247,7 @@ def normalize_result(result: Any, audio: Path, backend: str, model: str) -> dict
     }
 
 
-def transcribe_mlx(audio: Path, language: str | None, model: str, aligner: str) -> dict[str, Any]:
+def transcribe_mlx(audio: Path, language: str | None, model: str, aligner: str, context: str) -> dict[str, Any]:
     try:
         from mlx_qwen3_asr import transcribe as qwen_transcribe  # type: ignore
     except Exception as exc:
@@ -192,17 +258,22 @@ def transcribe_mlx(audio: Path, language: str | None, model: str, aligner: str) 
         "language": language_name(language),
         "return_timestamps": True,
         "forced_aligner": aligner,
+        "context": context,
         "verbose": False,
     }
     try:
         result = qwen_transcribe(str(audio), **kwargs)
     except TypeError:
         kwargs.pop("verbose", None)
-        result = qwen_transcribe(str(audio), **kwargs)
+        try:
+            result = qwen_transcribe(str(audio), **kwargs)
+        except TypeError:
+            kwargs.pop("context", None)
+            result = qwen_transcribe(str(audio), **kwargs)
     return normalize_result(result, audio, "mlx-qwen3-asr", model)
 
 
-def transcribe_official(audio: Path, language: str | None, model: str, aligner: str) -> dict[str, Any]:
+def transcribe_official(audio: Path, language: str | None, model: str, aligner: str, context: str) -> dict[str, Any]:
     try:
         import torch  # type: ignore
         from qwen_asr import Qwen3ASRModel  # type: ignore
@@ -221,20 +292,26 @@ def transcribe_official(audio: Path, language: str | None, model: str, aligner: 
         },
     )
     try:
-        result = asr.transcribe(
-            audio=str(audio),
-            language=language_name(language),
-            return_time_stamps=True,
-        )
+        kwargs: dict[str, Any] = {
+            "audio": str(audio),
+            "language": language_name(language),
+            "return_time_stamps": True,
+        }
+        try:
+            if context and "context" in inspect.signature(asr.transcribe).parameters:
+                kwargs["context"] = context
+        except (TypeError, ValueError):
+            pass
+        result = asr.transcribe(**kwargs)
         return normalize_result(result, audio, "qwen-asr", model)
     finally:
         del asr
 
 
-def transcribe_audio(audio: Path, backend: str, language: str | None, model: str, aligner: str) -> dict[str, Any]:
+def transcribe_audio(audio: Path, backend: str, language: str | None, model: str, aligner: str, context: str) -> dict[str, Any]:
     if backend == "mlx":
-        return transcribe_mlx(audio, language, model, aligner)
-    return transcribe_official(audio, language, model, aligner)
+        return transcribe_mlx(audio, language, model, aligner, context)
+    return transcribe_official(audio, language, model, aligner, context)
 
 
 def shift_words(words: list[dict[str, Any]], offset: float) -> list[dict[str, Any]]:
@@ -269,6 +346,8 @@ def transcribe_chunked(
     language: str | None,
     model: str,
     aligner: str,
+    context: str,
+    asr_context_hash: str,
 ) -> dict[str, Any]:
     chunk_dir = transcript_dir / f"{output_stem}.chunks"
     chunk_dir.mkdir(parents=True, exist_ok=True)
@@ -284,8 +363,8 @@ def transcribe_chunked(
             if chunk_duration <= 0:
                 continue
             chunk_json = chunk_dir / f"chunk_{index:04d}.json"
-            if chunk_json.exists():
-                payload = json.loads(chunk_json.read_text())
+            payload = cached_payload(chunk_json, model, asr_context_hash)
+            if payload:
                 print(f"cached chunk {index + 1}/{chunk_count}: {chunk_json}", file=sys.stderr)
             else:
                 audio = tmp_dir / f"{output_stem}_chunk_{index:04d}.wav"
@@ -296,12 +375,14 @@ def transcribe_chunked(
                 )
                 run_ffmpeg_extract_range(media, audio, start, chunk_duration)
                 print(f"transcribing chunk {index + 1}/{chunk_count} with {backend}: {model}", file=sys.stderr)
-                payload = transcribe_audio(audio, backend, language, model, aligner)
+                payload = transcribe_audio(audio, backend, language, model, aligner, context)
                 payload["metadata"] = {
                     **payload.get("metadata", {}),
                     "chunk_index": index,
                     "chunk_start": round(start, 3),
                     "chunk_duration": round(chunk_duration, 3),
+                    "asr_context_hash": asr_context_hash,
+                    "asr_context_chars": len(context),
                 }
                 chunk_json.write_text(json.dumps(payload, ensure_ascii=False, indent=2))
             text_parts.append(str(payload.get("text") or ""))
@@ -330,8 +411,12 @@ def main() -> int:
     parser.add_argument("--output-stem", help="Transcript JSON stem; defaults to the input media stem")
     parser.add_argument("--language", default="zh")
     parser.add_argument("--backend", choices=["mlx", "official"], default=os.environ.get("QWEN3_ASR_BACKEND", "mlx"))
-    parser.add_argument("--model", default=DEFAULT_MODEL)
+    parser.add_argument("--asr-profile", choices=ASR_PROFILE_CHOICES, default=DEFAULT_ASR_PROFILE, help="auto=fast for long media and quality for short media; fast=Qwen3-ASR-0.6B, quality=Qwen3-ASR-1.7B")
+    parser.add_argument("--model", default=os.environ.get("QWEN3_ASR_MODEL"), help="Override --asr-profile with an explicit Qwen model id")
     parser.add_argument("--aligner", default=DEFAULT_ALIGNER)
+    parser.add_argument("--context", default=os.environ.get("QWEN3_ASR_CONTEXT", ""), help="Short ASR bias context, usually space-separated domain terms")
+    parser.add_argument("--context-file", type=Path, help="Read ASR bias context from a text file")
+    parser.add_argument("--max-context-chars", type=int, default=DEFAULT_MAX_CONTEXT_CHARS)
     parser.add_argument("--chunk-seconds", type=float, default=DEFAULT_CHUNK_SECONDS)
     parser.add_argument("--chunk-threshold-seconds", type=float, default=DEFAULT_CHUNK_THRESHOLD_SECONDS)
     parser.add_argument("--no-chunk", action="store_true", help="Transcribe the whole extracted audio in one ASR call")
@@ -351,11 +436,20 @@ def main() -> int:
     if not output_stem:
         output_stem = media.stem or "transcript"
     out = transcript_dir / f"{output_stem}.json"
-    if out.exists():
-        print(f"cached: {out}")
-        return 0
 
     duration = media_duration(media)
+    resolved_profile = resolve_asr_profile(args.asr_profile, duration, args.chunk_threshold_seconds)
+    model = resolve_asr_model(resolved_profile, args.model)
+    context = read_asr_context(args.context, args.context_file, args.max_context_chars)
+    asr_context_hash = context_hash(context)
+    cached = cached_payload(out, model, asr_context_hash)
+    if cached:
+        print(f"cached: {out}")
+        return 0
+    if out.exists():
+        print(f"cache stale, retranscribing: {out}", file=sys.stderr)
+    if context:
+        print(f"using ASR context: {len(context)} chars hash={asr_context_hash}", file=sys.stderr)
     use_chunks = not args.no_chunk and duration >= args.chunk_threshold_seconds
     if use_chunks:
         print(
@@ -371,17 +465,26 @@ def main() -> int:
             args.chunk_seconds,
             args.backend,
             args.language,
-            args.model,
+            model,
             args.aligner,
+            context,
+            asr_context_hash,
         )
     else:
         with tempfile.TemporaryDirectory() as tmp:
             audio = Path(tmp) / f"{output_stem}.wav"
             print(f"extracting audio: {media.name}", file=sys.stderr)
             run_ffmpeg_extract(media, audio)
-            print(f"transcribing with {args.backend}: {args.model}", file=sys.stderr)
-            payload = transcribe_audio(audio, args.backend, args.language, args.model, args.aligner)
+            print(f"transcribing with {args.backend}: {model}", file=sys.stderr)
+            payload = transcribe_audio(audio, args.backend, args.language, model, args.aligner, context)
 
+    payload["metadata"] = {
+        **payload.get("metadata", {}),
+        "asr_profile": args.asr_profile,
+        "resolved_asr_profile": resolved_profile,
+        "asr_context_hash": asr_context_hash,
+        "asr_context_chars": len(context),
+    }
     out.write_text(json.dumps(payload, ensure_ascii=False, indent=2))
     print(f"saved: {out}", file=sys.stderr)
     return 0

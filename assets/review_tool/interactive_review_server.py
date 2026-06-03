@@ -23,6 +23,10 @@ DEFAULT_MANIFEST = ROOT / "interactive_review_manifest.json"
 APP_HTML = ROOT / "interactive_review_app.html"
 END_PUNCT = set("。！？!?；;")
 SOFT_PUNCT = set("，,、")
+VISIBLE_SUBTITLE_PUNCT = "，,、；;：:。！？!?"
+DECIMAL_DOT_TOKEN = "__DECIMAL_DOT__"
+TECH_DOT_TOKEN = "__TECH_DOT__"
+RATIO_COLON_TOKEN = "__RATIO_COLON__"
 LOCK_TTL_SECONDS = 75
 RENDER_AUDIO_FADE_SECONDS = 0.03
 PROJECTS: dict[str, "ProjectConfig"] = {}
@@ -444,6 +448,7 @@ def default_state(project: ProjectConfig) -> dict:
         "cues": parse_srt(project.draft_srt),
         "scriptLines": build_script_lines(project, deletes),
         "useScriptLines": True,
+        "referenceReview": None,
         "updatedAt": None,
     }
 
@@ -459,6 +464,8 @@ def load_state(project: ProjectConfig) -> dict:
                 state["cues"] = saved["cues"]
             if saved.get("scriptLines"):
                 state["scriptLines"] = saved["scriptLines"]
+            if "referenceReview" in saved:
+                state["referenceReview"] = saved.get("referenceReview")
             state["useScriptLines"] = saved.get("useScriptLines", state.get("useScriptLines", True))
             state["updatedAt"] = saved.get("updatedAt")
         except Exception:
@@ -473,6 +480,17 @@ def text_unit(char: str) -> bool:
 def clean_line_text(value: str) -> str:
     value = re.sub(r"\s+", " ", value).strip()
     value = re.sub(r"\s+([，。！？；、,.!?;])", r"\1", value)
+    value = re.sub(r"(?<=\d)\.(?=\d)", DECIMAL_DOT_TOKEN, value)
+    value = re.sub(r"(?<=[A-Za-z])\.(?=\d)", TECH_DOT_TOKEN, value)
+    value = re.sub(r"(?<=\d):(?=\d)", RATIO_COLON_TOKEN, value)
+    value = re.sub(rf"([A-Za-z0-9%])\s*[{re.escape(VISIBLE_SUBTITLE_PUNCT)}]\s*(?=[A-Za-z0-9])", r"\1 ", value)
+    value = re.sub(rf"\s*([{re.escape(VISIBLE_SUBTITLE_PUNCT)}])\s*", "", value)
+    value = value.replace(".", "")
+    value = value.replace(TECH_DOT_TOKEN, ".")
+    value = value.replace(DECIMAL_DOT_TOKEN, ".")
+    value = value.replace(RATIO_COLON_TOKEN, ":")
+    value = re.sub(r"\s+", " ", value).strip()
+    value = re.sub(r"(?<=[\u3400-\u9fff])\s+(?=[\u3400-\u9fff])", "", value)
     return value
 
 
@@ -750,7 +768,7 @@ def build_script_lines(project: ProjectConfig, deletes: list[dict] | None = None
 def write_srt(cues: list[dict], path: Path) -> None:
     lines: list[str] = []
     for i, cue in enumerate(sorted(cues, key=lambda c: (float(c["start"]), float(c["end"]))), 1):
-        text = str(cue.get("text", "")).strip()
+        text = clean_line_text(cue.get("text", ""))
         if not text:
             continue
         start = float(cue["start"])
@@ -891,7 +909,7 @@ def script_delete_intervals(lines: list[dict]) -> list[dict]:
     intervals: list[dict] = []
     for line in lines:
         text = clean_line_text(line.get("text", ""))
-        if not line.get("deleted") or not text:
+        if not line.get("deleted"):
             continue
         start = float(line.get("start", 0))
         end = float(line.get("end", start))
@@ -902,7 +920,7 @@ def script_delete_intervals(lines: list[dict]) -> list[dict]:
             "start": start,
             "end": end,
             "duration": end - start,
-            "summary": text,
+            "summary": text or "手动删除",
             "reason": line.get("source", ""),
             "source": "scriptLines",
         })
@@ -954,19 +972,39 @@ def alignment_units_for_cues(cues: list[dict]) -> list[dict]:
         text = clean_line_text(cue.get("text", ""))
         start = float(cue.get("start", 0))
         end = max(start + 0.05, float(cue.get("end", start + 0.05)))
-        chars = [ch for ch in text if ch.strip()]
-        if not chars:
+        text_units = alignment_text_units(text)
+        if not text_units:
             continue
-        step = (end - start) / len(chars)
-        for i, ch in enumerate(chars):
+        step = (end - start) / len(text_units)
+        for i, unit_text in enumerate(text_units):
             units.append({
                 "cueIndex": cue_index,
                 "unitIndex": i + 1,
-                "text": ch,
+                "text": unit_text,
                 "start": round(start + step * i, 3),
                 "end": round(start + step * (i + 1), 3),
                 "timing": "line-interpolated",
             })
+    return units
+
+
+def alignment_text_units(text: str) -> list[str]:
+    units: list[str] = []
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        if not ch.strip():
+            i += 1
+            continue
+        if re.match(r"[A-Za-z0-9]", ch):
+            start = i
+            i += 1
+            while i < len(text) and re.match(r"[A-Za-z0-9.+%_-]", text[i]):
+                i += 1
+            units.append(text[start:i])
+            continue
+        units.append(ch)
+        i += 1
     return units
 
 
