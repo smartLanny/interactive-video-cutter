@@ -50,32 +50,41 @@ interactive-video-cutter/
    - Writes `<workdir>/edit/takes_packed.md` as a compact phrase-level transcript for agent review.
    - Writes `<workdir>/edit/reference_review_report.md` and `<workdir>/edit/semantic_review_packets.jsonl`. Long-form review should use Direct EDL plus take-clustering validation as the primary review path; packets are a residual QA surface.
 
-3. `scripts/apply_semantic_review_suggestions.py`
+3. AI polish before browser review
+   - Back up `<workdir>/interactive_review_state.json` to `<workdir>/interactive_review_state.before-ai-polish.json` before writing.
+   - Codex middle agent is the default writer. It should directly apply high-confidence repeated-take deletes, false-start deletes, obvious term/number/unit fixes, and safe semantic cleanup to `interactive_review_state.json`.
+   - Suggestions-only is not enough for the intended workflow; the browser should open a pre-polished state, not a raw transcript.
+   - Write `<workdir>/edit/ai_polish_report.md` and `<workdir>/edit/ai_polish_suggestions.json` for audit and rollback context.
+   - Mark uncertain dense metrics, off-reference but plausible narration, long time spans, low match score, or risky term/number edits with `needs_human`, `needs-review`, or `ai-polish-focus`.
+   - Normalize units to the reference style when clearly spoken: `W`, `℃`, `Hz`, `GHz`, `GB`, `Wh`, `nits`. Do not expand `W` to `瓦` or `℃` to `摄氏度` when the reference uses symbolic units.
+   - External AI APIs such as MiMo are optional auditors for selected hard windows. They are not default automatic state writers.
+
+4. `scripts/apply_semantic_review_suggestions.py`
    - Applies structured LLM semantic review suggestions to `interactive_review_state.json`.
    - Defaults to action-aware confidence: delete/restore require `high`, replace/re-split allow `high` or `medium`.
    - Marks low-confidence suggestions, and medium-confidence delete/restore suggestions, as QA flags for browser review instead of applying them.
 
-4. `scripts/transcribe_qwen3.py`
+5. `scripts/transcribe_qwen3.py`
    - Extracts mono 16 kHz temporary audio chunks with FFmpeg from the selected ASR input.
    - Runs `mlx-qwen3-asr` on Apple Silicon or `qwen-asr` when requested.
    - Writes transcript JSON to `<workdir>/edit/transcripts/<media-stem>.json`.
    - Uses 180 second chunks for media at or above 600 seconds, caching chunks in `<media-stem>.chunks/`.
    - Accepts `--context` / `--context-file`; transcript and chunk caches include the context hash, including the empty no-context hash.
 
-5. `scripts/preprocess_chinese.py`
+6. `scripts/preprocess_chinese.py`
    - Converts ASR `words`, `segments`, or `text` into timed review lines.
    - Uses reference text to correct terms, numbers, model names, punctuation, and sentence breaks.
    - Uses reference matches to mark repeated takes for deletion and split long comma-heavy review lines.
    - Keeps audio/video ASR as source of truth; reference text must not add unspoken content.
 
-5. `assets/review_tool/interactive_review_server.py`
+7. `assets/review_tool/interactive_review_server.py`
    - Serves the local review page and media.
    - Saves `interactive_review_state.json`.
    - Provides editing locks.
    - Exports SRT, CSV, JSON, alignment sidecars, DaVinci handoff, and FCPXML.
    - Renders preview/output media when requested.
 
-6. `assets/review_tool/interactive_review_app.html`
+8. `assets/review_tool/interactive_review_app.html`
    - Single-file browser UI.
    - One sentence per line.
    - Struck-through lines are cut.
@@ -100,6 +109,7 @@ Review state:
 - `scriptLines[].text`: user-facing cleaned text.
 - `scriptLines[].start/end`: original media timeline seconds.
 - `scriptLines[].deleted`: whether that line should be cut.
+- `scriptLines[].qaFlags`: QA markers such as `needs_human`, `needs-review`, and `ai-polish-focus` for browser final review.
 - `useScriptLines`: should remain true for the current workflow.
 
 Exports:
@@ -111,7 +121,7 @@ Exports:
 - `davinci_timeline.fcpxml`: importable editing timeline.
 - `selected_delete_preview.mp4/.m4a`: optional FFmpeg render.
 
-Project setup also writes `<workdir>/edit/takes_packed.md` as a lightweight transcript reading view and `<workdir>/edit/semantic_review_packets.jsonl` for focused LLM follow-up. The fast review path is Direct EDL first, take-clustering validator second, browser review only for conflicts and low-confidence audio questions.
+Project setup also writes `<workdir>/edit/takes_packed.md` as a lightweight transcript reading view and `<workdir>/edit/semantic_review_packets.jsonl` for focused LLM follow-up. The fast review path is reference-grouped preprocessing, Codex middle AI polish direct state write, Direct EDL/take-clustering validation, then browser review only for focus items, conflicts, and low-confidence audio questions.
 
 ## Video Logic
 
@@ -186,8 +196,9 @@ rg -n '(/Users/|/Volumes/|gho_|HF_TOKEN\s*=|HUGGINGFACE_HUB_TOKEN\s*=|password\s
 - Keep public-internet access out of scope; the server assumes a trusted LAN.
 - Do not silently expand `allowedRoots`.
 - Do not overwrite an existing review state unless the user explicitly asks.
+- Do not make external AI APIs default automatic writers until they pass fixture gates for false deletes, unsafe reference insertion, and missed `needs_human` items.
 - When changing export behavior, test both audio and video paths.
-- When changing text preprocessing, test protected terms such as `618`, `DLSS 4.5`, `RTX 5070 Ti`, `HDMI2.1`, `DP1.4`.
+- When changing text preprocessing or AI polish, test protected terms such as `618`, `DLSS 4.5`, `RTX 5070 Ti`, `HDMI2.1`, `DP1.4`, plus units such as `W`, `℃`, `Hz`, `GHz`, `GB`, `Wh`, and `nits`.
 
 ## Release Flow
 

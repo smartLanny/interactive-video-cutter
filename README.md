@@ -10,7 +10,8 @@ This is not a SaaS app. It is designed to run on a trusted local editing/render 
 - For video inputs, creates a lightweight AAC audio proxy for ASR and web review while keeping the original video as the edit/export source.
 - Runs local Qwen3-ASR, caches transcript JSON, and writes `edit/takes_packed.md`, `edit/reference_review_report.md`, and compact review artifacts for agent review.
 - Uses the reference script to fix terms, numbers, model names, punctuation, and Chinese sentence breaks.
-- Opens a browser review page with one sentence per line.
+- Runs an AI polish stage before browser review so high-confidence cleanup is already written into `interactive_review_state.json`.
+- Opens a browser final-review page with one sentence per line.
 - Lets reviewers toggle deletion lines with keyboard shortcuts.
 - Keeps timing on the original media timeline.
 - Exports both edited-timeline and original-timeline subtitles.
@@ -68,6 +69,8 @@ python3 scripts/create_review_project.py \
   --title "My Talk"
 ```
 
+For production narration, run the AI polish stage below before opening the browser. The browser should be a final-check surface for focus items, not the first cleanup pass over raw ASR.
+
 Start the local/LAN review server:
 
 ```bash
@@ -102,9 +105,33 @@ python3 scripts/export_davinci_timeline.py \
   --render
 ```
 
+## AI Polish Before Browser Review
+
+The intended production flow is:
+
+```text
+fast ASR
+-> reference-grouped preprocessing
+-> Codex middle AI polish writes high-confidence cleanup into interactive_review_state.json
+-> browser final review
+-> SRT/FCPXML/sidecar export
+```
+
+AI polish is a state-editing stage, not only a suggestion report. Before it writes, back up the review state as `interactive_review_state.before-ai-polish.json`. The polish pass should:
+
+- Delete repeated takes, false starts, abandoned fragments, long pauses, and obvious waste lines when confidence is high.
+- Fix clear ASR term, model, number, and unit mistakes when the audio/ASR supports the edit.
+- Improve semantic line breaks only when timing boundaries remain safe.
+- Mark uncertain lines with `needs_human`, `needs-review`, or `ai-polish-focus` instead of forcing a deletion or text change.
+- Write `edit/ai_polish_report.md`, `edit/ai_polish_suggestions.json`, and the updated `interactive_review_state.json`.
+
+Codex middle agent is the default writer for this stage because it can back up, edit, and validate local files. External AI APIs such as MiMo can be used as optional auditors for selected hard windows, but they should not automatically write back to state by default. To roll back, restore `interactive_review_state.before-ai-polish.json`.
+
+Unit normalization should follow the reference script. For technical narration, prefer forms such as `W`, `℃`, `Hz`, `GHz`, `GB`, `Wh`, and `nits` when the reference uses them; do not expand `W` to `瓦` or `℃` to `摄氏度`.
+
 ## Review UI
 
-The page shows the whole script as editable lines:
+The page shows the polished script as editable lines:
 
 - One sentence per line.
 - Struck-through lines are cut.
@@ -132,16 +159,17 @@ For video files, the workflow is:
 2. Qwen3-ASR produces transcript text and word-level timing when available. The default first pass does not use global ASR context.
 3. Optional targeted reruns may pass a short terminology context for dense technical ranges.
 4. `edit/takes_packed.md` gives agents a compact transcript reading view.
-5. A middle-thinking Direct EDL pass creates a compact keep/delete/review plan with evidence `lineIds`.
-6. A take-clustering validator checks the Direct EDL plan for missing-reference gaps, orphan tails, truncated/time-overlap lines, repeated-take chains, and dense metric/protected-term runs.
-7. Only Direct EDL and clustering conflicts, plus low-confidence audio questions, become browser/manual review items. Line-level `semantic_review_packets.jsonl` is a residual QA surface, not the primary review queue.
+5. Codex middle AI polish backs up `interactive_review_state.json`, then writes high-confidence deletes, term/number/unit fixes, and safe line cleanup directly into state.
+6. Direct EDL plus take-clustering validate the polish for missing-reference gaps, orphan tails, time overlaps, repeated-take chains, and dense metric/protected-term runs.
+7. Only AI polish focus items, EDL/clustering conflicts, and low-confidence audio questions become browser/manual review items. Line-level `semantic_review_packets.jsonl` is a residual QA surface, not the primary review queue.
 8. Structured LLM suggestions can be imported with `scripts/apply_semantic_review_suggestions.py`; by default deletes stay high-confidence only while medium-confidence text replacements and re-splits may apply.
-9. The reference script corrects obvious ASR issues, anchors repeated-take deletion, and guides long-line splitting without forcing unspoken text.
-10. The review state stores `scriptLines[]` with original source-video `start/end` times.
-11. Deleted lines become source-time delete intervals.
-12. Export builds keep segments from the source timeline.
-13. FCPXML uses the original video as the source asset.
-14. Optional render uses FFmpeg `trim/atrim` + `concat` with 30 ms audio fades at segment boundaries.
+9. External AI APIs such as MiMo are optional audit layers for selected hard windows, not default automatic state writers.
+10. The reference script corrects obvious ASR issues, anchors repeated-take deletion, and guides long-line splitting without forcing unspoken text.
+11. The review state stores `scriptLines[]` with original source-video `start/end` times.
+12. Deleted lines become source-time delete intervals.
+13. Export builds keep segments from the source timeline.
+14. FCPXML uses the original video as the source asset.
+15. Optional render uses FFmpeg `trim/atrim` + `concat` with 30 ms audio fades at segment boundaries.
 
 Default video render encoding is `libx264`. Hardware encoders can be selected:
 
@@ -215,7 +243,8 @@ Then ask Codex to use `$interactive-video-cutter` with a media path and referenc
 - 支持视频和音频输入。
 - 自动抽取轻量 `.m4a` 音频代理做 ASR 和网页审阅预览，避免长视频转写/审阅时反复读取原始大文件。
 - 用参考文案清洗 raw ASR，避免把 `618`、`DLSS 4.5`、`RTX 5070 Ti` 之类术语识别坏。
-- 审阅页是一整段文本，一句一行。
+- 浏览器审阅前先由 Codex middle agent 预打磨 `interactive_review_state.json`，高置信删除线、术语数字修正和安全断句应先写回 state。
+- 审阅页是一整段已预打磨文本，一句一行。
 - 删除线表示这一行会被剪掉；取消删除线表示保留。
 - 所有时间仍对应原始媒体时间线。
 - 导出剪后时间线字幕、原始时间线字幕、逐字/逐行时间对齐 sidecar。
@@ -252,6 +281,8 @@ python3 scripts/create_review_project.py \
   --title "My Talk"
 ```
 
+生产项目先做下面的 AI 预打磨，再启动网页；网页应主要用于重点听审，不是 raw ASR 的第一轮清稿面板。
+
 启动局域网审阅页面：
 
 ```bash
@@ -266,6 +297,18 @@ python3 scripts/start_review_server.py \
 ```text
 http://<剪辑机IP>:8765
 ```
+
+### AI 预打磨
+
+正式流程不是把 raw ASR 丢给用户逐行清。创建项目后，先备份 `interactive_review_state.json` 为 `interactive_review_state.before-ai-polish.json`，再由 Codex middle agent 直接写回高置信清理结果，并输出：
+
+- `edit/ai_polish_report.md`
+- `edit/ai_polish_suggestions.json`
+- 更新后的 `interactive_review_state.json`
+
+高置信重复 take、废稿、长停顿可以直接加删除线；明确的术语、型号、数字和单位错误可以直接修。听不准的密集指标、长时间窗、off-reference 但可能有效的口播，标 `needs_human` / `needs-review` / `ai-polish-focus`，留到网页听审。MiMo 等外部 AI 只作为可选复审，不默认自动写回 state。
+
+单位按参考文案统一：该写 `W`、`℃`、`Hz`、`GHz`、`GB`、`Wh`、`nits` 时不要改成 `瓦`、`摄氏度` 等口语写法。
 
 ### 审阅快捷键
 
@@ -311,7 +354,7 @@ python3 scripts/export_davinci_timeline.py --manifest /path/to/manifest.json --r
 - 默认不做登录鉴权，只适合可信局域网。
 - 不支持浏览器上传大媒体文件；项目导入由 agent/CLI 完成。
 - 多人同时打开同一项目时，页面用项目编辑锁避免覆盖。
-- 自动删除线只是初步建议，最终仍以人工审阅为准。
+- AI 预打磨只直接应用高置信改动，最终仍以人工听审为准。
 - DaVinci/Premiere 成片前建议做 conform 检查。
 
 ## License
