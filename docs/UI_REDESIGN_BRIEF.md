@@ -35,6 +35,13 @@ The left navigation remains light:
 - Mini bottom timeline should stay around 44-56 px.
 - `Cmd+B` expands the bottom audio area to show waveform skeleton, range handles, zoom, speed, volume, and snap controls.
 
+## Reference Build Notes
+
+- Treat `测试 UI 方向` as the accepted visual reference for this branch.
+- Line view follows the manuscript table direction: full-width rows, quiet source/output time columns, text-first reading, and a right status label.
+- Per-line visible action buttons are removed from the manuscript rows; play/delete/split/merge remain shortcut-driven on the active line.
+- Continuous view keeps article reading as the main surface and uses a lightweight audit navigation rail for review targets.
+
 ## Keyboard
 
 - Existing shortcuts must remain: save, line play, delete, split, merge, undo/redo, search, line navigation.

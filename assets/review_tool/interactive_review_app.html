@@ -5,22 +5,22 @@
 <style>
   :root {
     color-scheme: light;
-    --bg: #f7f5f1;
-    --paper: #fffdf9;
+    --bg: #faf9f7;
+    --paper: #ffffff;
     --ink: #24211d;
     --muted: #77716a;
     --faint: #a9a29a;
-    --line: #e5ded4;
-    --line-strong: #d8ccbc;
+    --line: #e8e1d8;
+    --line-strong: #d7cab9;
     --panel: #ffffff;
-    --panel-soft: #fbf8f2;
+    --panel-soft: #fcfaf7;
     --accent: #a86612;
     --accent-soft: #f4e4cf;
     --danger: #a5382e;
     --danger-soft: #f8e5df;
     --ok: #1d7c46;
     --info: #2866b2;
-    --nav: #fbfaf7;
+    --nav: #fbfaf8;
     --timeline-height: 56px;
     --shadow: 0 18px 50px rgba(44, 32, 18, 0.08);
   }
@@ -30,7 +30,7 @@
     font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Arial, sans-serif;
     color: var(--ink);
     background: var(--bg);
-    line-height: 1.5;
+    line-height: 1.45;
     padding-bottom: var(--timeline-height);
   }
   body.timeline-expanded {
@@ -41,12 +41,12 @@
     top: 0;
     z-index: 12;
     display: grid;
-    grid-template-columns: minmax(240px, 0.9fr) minmax(240px, 420px) auto;
+    grid-template-columns: minmax(300px, 0.85fr) minmax(360px, 560px) minmax(320px, 0.85fr);
     gap: 18px;
     align-items: center;
     min-height: 64px;
     padding: 0 22px;
-    background: rgba(255, 253, 249, 0.96);
+    background: rgba(255, 255, 255, 0.96);
     border-bottom: 1px solid var(--line);
     backdrop-filter: blur(12px);
   }
@@ -204,7 +204,7 @@
   }
   .status {
     min-height: 0;
-    max-width: 130px;
+    max-width: 112px;
     overflow: hidden;
     color: var(--muted);
     text-overflow: ellipsis;
@@ -329,22 +329,21 @@
   .metric span { color: var(--faint); margin-right: 4px; }
   main.review-layout {
     min-height: calc(100vh - 64px - var(--timeline-height));
-    padding: 18px 26px 28px;
+    padding: 16px 30px 30px;
   }
   .toolbar {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: space-between;
-    gap: 12px;
+    display: grid;
+    grid-template-columns: minmax(220px, auto) auto minmax(220px, 1fr) auto;
+    gap: 10px 18px;
     align-items: center;
     position: sticky;
     top: 64px;
     z-index: 3;
-    margin: 0 auto 0;
-    max-width: 1200px;
-    padding: 10px 0 14px;
+    margin: 0;
+    max-width: none;
+    padding: 10px 0 13px;
     border-bottom: 1px solid var(--line);
-    background: rgba(247, 245, 241, 0.94);
+    background: rgba(250, 249, 247, 0.94);
     backdrop-filter: blur(10px);
   }
   .filter-info {
@@ -357,6 +356,7 @@
     flex-wrap: wrap;
     gap: 6px;
     min-width: 0;
+    grid-column: 1 / -1;
   }
   .review-filters button {
     padding: 5px 8px;
@@ -417,8 +417,8 @@
     color: var(--ink);
   }
   .script {
-    max-width: 1200px;
-    margin: 0 auto;
+    max-width: none;
+    margin: 0;
     border: 0;
     border-radius: 0;
     background: transparent;
@@ -427,19 +427,30 @@
     max-height: none;
     box-shadow: none;
   }
+  .line-table-head {
+    display: grid;
+    grid-template-columns: 34px 58px 118px 118px minmax(0, 1fr) 72px;
+    gap: 10px;
+    align-items: center;
+    min-height: 38px;
+    padding: 0 10px;
+    border-bottom: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 12px;
+  }
   .line-row {
     display: grid;
-    grid-template-columns: 92px minmax(0, 1fr) 76px;
-    gap: 14px;
+    grid-template-columns: 34px 58px 118px 118px minmax(0, 1fr) 72px;
+    gap: 10px;
     align-items: center;
-    min-height: 52px;
-    padding: 9px 10px 9px 0;
+    min-height: 53px;
+    padding: 0 10px;
     border-bottom: 1px solid var(--line);
   }
   .line-row:last-child { border-bottom: 0; }
   .line-row.active {
     outline: 0;
-    background: #fbf1e5;
+    background: #fff6eb;
   }
   .line-row.deleted {
     background: transparent;
@@ -472,6 +483,29 @@
   .line-row.pause .line-text {
     color: var(--muted);
     font-style: italic;
+  }
+  .line-play-marker {
+    display: grid;
+    place-items: center;
+    color: #c9820d;
+    font-size: 15px;
+    line-height: 1;
+  }
+  .line-row:not(.active) .line-play-marker {
+    color: #a9a29a;
+    font-size: 13px;
+  }
+  .line-content {
+    min-width: 0;
+  }
+  .line-status {
+    justify-self: end;
+    color: var(--ok);
+    font-size: 13px;
+    font-weight: 520;
+  }
+  .line-status.deleted {
+    color: var(--danger);
   }
   .candidate-groups {
     display: grid;
@@ -603,27 +637,24 @@
   .line-number {
     color: var(--muted);
     font-weight: 520;
+    font-variant-numeric: tabular-nums;
   }
   .time {
     color: var(--faint);
     font-variant-numeric: tabular-nums;
   }
-  .line-row .time {
-    display: none;
-  }
-  .line-row.active .time {
-    display: block;
-  }
+  .line-row .time { display: block; }
+  .line-row.deleted .time { color: #d45b50; }
   .line-text {
-    min-height: 32px;
-    padding: 4px 6px;
+    min-height: 0;
+    padding: 3px 4px;
     border-radius: 5px;
     outline: 0;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
     font-family: Georgia, "Times New Roman", "Songti SC", "STSong", serif;
     font-size: 17px;
-    line-height: 1.72;
+    line-height: 1.62;
   }
   .line-text:focus {
     background: #fffaf2;
@@ -632,6 +663,9 @@
   .line-actions {
     justify-content: flex-end;
     min-width: 70px;
+  }
+  .line-row > .line-actions {
+    display: none;
   }
   .small {
     padding: 5px 7px;
@@ -642,13 +676,21 @@
     color: var(--muted);
   }
   .continuous-paper {
-    max-width: 1040px;
-    margin: 0 auto;
-    padding: 28px 8px 42px;
+    max-width: 980px;
+    margin: 0;
+    padding: 28px 44px 42px 8px;
     font-family: Georgia, "Times New Roman", "Songti SC", "STSong", serif;
     font-size: 20px;
     line-height: 2.12;
     letter-spacing: 0;
+  }
+  .continuous-workspace {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 310px;
+    gap: 30px;
+    align-items: start;
+    max-width: 1360px;
+    margin: 0 auto;
   }
   .article-segment {
     position: relative;
@@ -658,8 +700,8 @@
     cursor: text;
   }
   .article-segment.active {
-    background: #fbecd9;
-    box-shadow: 0 0 0 1px #e0bc8b;
+    background: transparent;
+    box-shadow: inset 0 -2px 0 #e5bd7f;
   }
   .article-segment.deleted {
     color: var(--danger);
@@ -706,6 +748,61 @@
     line-height: 1;
     text-decoration: none;
     vertical-align: 2px;
+  }
+  .review-aside {
+    position: sticky;
+    top: 138px;
+    max-height: calc(100vh - 138px - var(--timeline-height) - 20px);
+    overflow: auto;
+    padding: 18px 0 22px 22px;
+    border-left: 1px solid var(--line);
+  }
+  .review-aside-head {
+    display: grid;
+    gap: 4px;
+    margin-bottom: 14px;
+  }
+  .review-aside-head strong {
+    font-size: 15px;
+  }
+  .review-aside-head span {
+    color: var(--muted);
+    font-size: 12px;
+  }
+  .review-aside-list {
+    display: grid;
+    gap: 8px;
+  }
+  .review-aside-item {
+    display: grid;
+    grid-template-columns: 64px minmax(0, 1fr);
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .review-aside-item:hover,
+  .review-aside-item.active {
+    border-color: #ddb988;
+    background: #fff8ef;
+  }
+  .review-aside-time {
+    color: var(--ink);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+  .review-aside-type {
+    color: var(--danger);
+    font-size: 12px;
+    font-weight: 640;
+  }
+  .review-aside-text {
+    margin-top: 3px;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.45;
   }
   .stats-panel {
     max-width: 820px;
@@ -773,6 +870,21 @@
     color: var(--ink);
     font-size: 14px;
     font-weight: 650;
+  }
+  .timeline-note {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--muted);
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  .timeline-note::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
   }
   .timeline-main {
     min-width: 0;
@@ -908,7 +1020,7 @@
   .range-handle.end { transform: translateX(50%); }
   .timeline-controls {
     display: grid;
-    grid-template-columns: repeat(3, auto);
+    grid-template-columns: auto auto auto auto;
     justify-content: end;
     align-items: center;
     gap: 8px;
@@ -1161,8 +1273,8 @@
     </div>
     <div class="timeline-expanded-panel">
       <div class="time-readout">
-        <span>统一时间线</span>
-        <strong id="editedPreviewInfo">播放自动跳过删除段</strong>
+        <span class="timeline-note">统一时间线</span>
+        <strong id="editedPreviewInfo">自动跳过删除段</strong>
       </div>
       <div class="waveform-wrap">
         <div id="waveform" class="waveform"></div>
@@ -2027,28 +2139,33 @@ function renderModeControls() {
 function renderRows() {
   const rows = visibleLines();
   const editable = canEdit();
-  $("scriptRows").innerHTML = rows.map(line => {
+  const header = `<div class="line-table-head" aria-hidden="true">
+    <span></span>
+    <span>#</span>
+    <span>源时间</span>
+    <span>成片时间</span>
+    <span>文本内容</span>
+    <span>状态</span>
+  </div>`;
+  $("scriptRows").innerHTML = rows.length ? `${header}${rows.map(line => {
     const deleted = Boolean(line.deleted);
     const active = String(line.id) === String(activeLineId);
     const pause = line.lineType === "pause";
     const flags = reviewFlagsHtml(line);
     const rowClass = ["line-row", deleted ? "deleted" : "", active ? "active" : "", pause ? "pause" : "", reviewClassListForItem(line)].filter(Boolean).join(" ");
+    const marker = active ? "▶" : (reviewItemFlags(line).length ? "•" : "");
     return `<div class="${rowClass}" data-line-id="${line.id}">
-      <div class="line-meta">
-        <div><span class="line-number">#${line.index}</span></div>
-        <div class="time">源 ${fmt(line.start)}-${fmt(line.end)}<br>${deleted ? "成片 删除" : `成片 ${fmt(sourceToOutputTime(line.start))}`}</div>
-      </div>
-      <div>
+      <div class="line-play-marker">${marker}</div>
+      <div><span class="line-number">${line.index}</span></div>
+      <div class="time source-time">${fmt(line.start)}</div>
+      <div class="time output-time">${deleted ? "–" : fmt(sourceToOutputTime(line.start))}</div>
+      <div class="line-content">
         <div class="line-text" data-line-text="${line.id}" contenteditable="${editable ? "true" : "false"}" spellcheck="false">${escapeHtml(line.text)}</div>
         ${flags}
       </div>
-      <div class="line-actions">
-        <button class="small" data-play-line="${line.id}">播放</button>
-        <button class="small danger" data-toggle-delete="${line.id}" ${editable ? "" : "disabled"}>${deleted ? "保留" : "删线"}</button>
-        <button class="small" data-insert-after="${line.id}" ${editable ? "" : "disabled"}>插下</button>
-      </div>
+      <div class="line-status ${deleted ? "deleted" : "kept"}" title="${deleted ? "已标记删除，Cmd+D 恢复当前行" : "保留，Cmd+D 标记删除当前行"}">${deleted ? "删除" : "保留"}</div>
     </div>`;
-  }).join("") || `<div class="empty">没有匹配的行</div>`;
+  }).join("")}` : `<div class="empty">没有匹配的行</div>`;
 }
 
 function renderCandidateGroups() {
@@ -2097,11 +2214,36 @@ function renderCandidateGroups() {
 }
 
 function reviewFlagsInlineHtml(line) {
-  const flags = reviewItemFlags(line).filter(flag => flagCategory(flag) !== "delete-suggested");
-  if (!flags.length) return "";
-  const first = flags[0];
-  const extra = flags.length > 1 ? ` +${flags.length - 1}` : "";
-  return `<span class="duration-pill" title="${escapeHtml(flags.map(flagLabel).join(" / "))}">${escapeHtml(flagLabel(first))}${extra}</span>`;
+  return "";
+}
+
+function reviewAsideHtml() {
+  const items = state.scriptLines
+    .filter(line => Boolean(line.deleted) || reviewItemFlags(line).length)
+    .slice(0, 10);
+  const count = state.scriptLines.filter(line => Boolean(line.deleted) || reviewItemFlags(line).length).length;
+  if (!items.length) return "";
+  return `<aside class="review-aside" aria-label="审核导航">
+    <div class="review-aside-head">
+      <strong>审核导航</strong>
+      <span>按问题定位文稿。</span>
+    </div>
+    <div class="review-aside-list">
+      ${items.map(line => {
+        const flags = reviewItemFlags(line);
+        const label = line.deleted ? "段落删除" : (flags[0] ? flagLabel(flags[0]) : "待审");
+        const active = String(line.id) === String(activeLineId);
+        return `<div class="review-aside-item ${active ? "active" : ""}" data-line-id="${line.id}">
+          <div class="review-aside-time">${fmt(line.start)}</div>
+          <div>
+            <div class="review-aside-type">${escapeHtml(label)}</div>
+            <div class="review-aside-text">${escapeHtml((line.text || "").slice(0, 36))}${(line.text || "").length > 36 ? "…" : ""}</div>
+          </div>
+        </div>`;
+      }).join("")}
+    </div>
+    ${count > items.length ? `<div class="review-aside-text" style="margin-top:12px">还有 ${count - items.length} 条，可用 Cmd+↑ / Cmd+↓ 跳转。</div>` : ""}
+  </aside>`;
 }
 
 function renderContinuous() {
@@ -2117,7 +2259,7 @@ function renderContinuous() {
     </span>`;
   }).join(" ");
   $("scriptRows").innerHTML = content
-    ? `<article class="continuous-paper">${content}</article>`
+    ? `<section class="continuous-workspace"><article class="continuous-paper">${content}</article>${reviewAsideHtml()}</section>`
     : `<div class="empty">没有匹配的片段</div>`;
 }
 
@@ -2840,8 +2982,8 @@ function updateEditedPreviewInfo() {
   if (!$("editedPreviewInfo")) return;
   const deleted = deletedIntervals().reduce((sum, item) => sum + item.end - item.start, 0);
   $("editedPreviewInfo").textContent = deleted > 0
-    ? `实时跳过 ${fmt(deleted)} 删除线；播放器时间仍显示原始素材时间`
-    : "当前没有删除线，底部预览等同原始素材";
+    ? `跳过 ${fmt(deleted)} 删除段`
+    : "无删除段";
 }
 
 function clearPlaybackStop() {
