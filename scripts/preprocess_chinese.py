@@ -23,6 +23,8 @@ DEFAULT_PAUSE_DELETE_THRESHOLD = 1.2
 ASR_TIMESTAMP_GAP_REVIEW_THRESHOLD = 12.0
 REPEATED_TAKE_SCORE_MARGIN = 0.04
 REPEATED_TAKE_COMPLETENESS_MARGIN = 0.12
+REPEATED_TAKE_LONGER_COMPLETENESS_MARGIN = 0.14
+REPEATED_TAKE_LONGER_SCORE_MARGIN = 0.25
 REFERENCE_HIGH_CONFIDENCE = 0.80
 REFERENCE_MID_CONFIDENCE = 0.62
 REFERENCE_MIN_RATIO = 0.36
@@ -829,7 +831,7 @@ def is_filler_or_fragment(text: str, duration: float) -> bool:
         return True
     if norm in {"嗯", "啊", "呃", "额", "然后", "这个", "就是", "对", "好"} and duration <= 2.5:
         return True
-    return len(norm) <= 2 and duration <= 1.5
+    return False
 
 
 def mark_conservative_deletes(lines: list[dict[str, Any]]) -> None:
@@ -955,11 +957,58 @@ def choose_best_repeated_take(group: list[dict[str, Any]]) -> dict[str, Any]:
         and later_duration >= best_duration - REPEATED_TAKE_COMPLETENESS_MARGIN
     ):
         return later
+    if (
+        later_text >= best_text + REPEATED_TAKE_LONGER_COMPLETENESS_MARGIN
+        and later_duration >= best_duration - REPEATED_TAKE_COMPLETENESS_MARGIN
+        and later_score >= best_score - REPEATED_TAKE_LONGER_SCORE_MARGIN
+    ):
+        return later
     return best
+
+
+def is_short_dependent_fragment(lines: list[dict[str, Any]], index: int) -> bool:
+    line = lines[index]
+    text = str(line.get("text") or "")
+    norm = line_semantic_norm(line)
+    if not (1 <= len(norm) <= 4):
+        return False
+    if re.search(r"[A-Za-z0-9]", text):
+        return False
+    if is_filler_or_fragment(text, float(line.get("end", 0.0)) - float(line.get("start", 0.0))):
+        return False
+
+    start = float(line.get("start") or 0.0)
+    end = float(line.get("end") or start)
+    previous = next(
+        (
+            item
+            for item in reversed(lines[max(0, index - 3) : index])
+            if not item.get("deleted") and item.get("lineType") != "pause"
+        ),
+        None,
+    )
+    next_line = next(
+        (
+            item
+            for item in lines[index + 1 : min(len(lines), index + 4)]
+            if not item.get("deleted") and item.get("lineType") != "pause"
+        ),
+        None,
+    )
+    if previous is None or next_line is None:
+        return False
+    prev_end = float(previous.get("end") or previous.get("start") or 0.0)
+    next_start = float(next_line.get("start") or 0.0)
+    if start - prev_end > 1.2 or next_start - end > 1.2:
+        return False
+
+    combined = line_semantic_norm(previous) + norm + line_semantic_norm(next_line)
+    return len(combined) >= 10
 
 
 def mark_reference_group_takes(lines: list[dict[str, Any]]) -> None:
     groups: dict[int, list[dict[str, Any]]] = {}
+    line_indexes = {id(line): index for index, line in enumerate(lines)}
     for line in lines:
         ref_index = line.get("_referenceIndex")
         if ref_index is None:
@@ -976,6 +1025,13 @@ def mark_reference_group_takes(lines: list[dict[str, Any]]) -> None:
         for line in group:
             if line is keep:
                 line["takeRole"] = "primary"
+                continue
+            line_index = line_indexes.get(id(line))
+            if line_index is not None and is_short_dependent_fragment(lines, line_index):
+                line["takeRole"] = line.get("takeRole") or "dependent-fragment"
+                append_flag(line, "needs-review")
+                append_flag(line, "dependent-fragment")
+                append_source(line, "suggested-keep:dependent-fragment")
                 continue
             line["deleted"] = True
             line["takeRole"] = "alternate"
@@ -1069,10 +1125,12 @@ def later_block_repeats_previous(previous_block: list[dict[str, Any]], later_blo
     if len(previous_norm) < 8 or len(later_norm) < 8:
         return False
     length_ratio = len(later_norm) / max(1, len(previous_norm))
-    if length_ratio < 0.78 or length_ratio > 2.15:
+    if length_ratio < 0.78:
         return False
     if previous_norm in later_norm:
         return True
+    if length_ratio > 2.15:
+        return False
     score = difflib.SequenceMatcher(None, previous_norm, later_norm).ratio()
     return score >= 0.86
 
@@ -1289,7 +1347,9 @@ def build_reference_review(
                 "qaFlags": flags,
                 "source": " ".join(sorted({str(part.get("source") or "") for part in parts if part.get("source")})),
             })
-        default_keep = next((take["takeId"] for take in takes if not take["deleted"]), None)
+        default_keep = next((take["takeId"] for take in takes if not take["deleted"] and take["takeRole"] == "primary"), None)
+        if default_keep is None:
+            default_keep = next((take["takeId"] for take in takes if not take["deleted"]), None)
         groups.append({
             "referenceIndex": ref_index,
             "referenceText": reference_lines[ref_index] if 0 <= ref_index < len(reference_lines) else "",
@@ -1449,6 +1509,9 @@ def build_semantic_review_packets(
                 "Review this whole reference group as one semantic unit using chinese-subtitle rules. "
                 "Prefer replace or replace_and_split when the spoken content clearly supports a text/segmentation fix. "
                 "Default import applies high and medium replace/replace_and_split, but applies delete/restore only at high confidence. "
+                "Repeated takes default to delete-before/keep-after: keep the later take when quality is close, "
+                "especially when it is more complete or bridges adjacent reference units. "
+                "Do not high-confidence delete a later take only because an earlier line matched the reference. "
                 "Do not add unspoken reference text; keep meaningful off-reference口播 but clean obvious ASR mistakes."
             ),
             "referenceGroup": group,
@@ -1478,7 +1541,9 @@ def build_semantic_review_packets(
             "reviewInstruction": (
                 "Use chinese-subtitle rules. High confidence only for obvious false starts, duplicate takes, "
                 "or delete/restore actions. Text replacement and re-splitting can use medium confidence "
-                "when they preserve spoken content and fix ASR or segmentation. Use low/flag_only when ambiguous."
+                "when they preserve spoken content and fix ASR or segmentation. Repeated takes default to "
+                "delete-before/keep-after; do not high-confidence delete a later, more complete take or a short "
+                "middle fragment that connects the kept lines. Use low/flag_only when ambiguous."
             ),
             "line": semantic_line_summary(line),
             "context": [semantic_line_summary(item) for item in lines[start:end]],

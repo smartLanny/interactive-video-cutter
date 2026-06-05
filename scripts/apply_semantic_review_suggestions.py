@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from preprocess_chinese import build_reference_review, subtitle_display_text
+from preprocess_chinese import build_reference_review, normalize_for_semantic_review, subtitle_display_text
 
 
 DEFAULT_ACTION_CONFIDENCES = {
@@ -113,6 +113,93 @@ def mark_pending(lines: list[dict[str, Any]], suggestion: dict[str, Any], indice
         for flag in suggestion.get("qaFlags") or []:
             append_flag(line, str(flag))
         append_review_note(line, suggestion, applied=False)
+
+
+def guarded_pending_suggestion(suggestion: dict[str, Any], reason: str) -> dict[str, Any]:
+    guarded = dict(suggestion)
+    flags = list(guarded.get("qaFlags") or [])
+    for flag in ("keep-after-review", "llm-delete-guard"):
+        if flag not in flags:
+            flags.append(flag)
+    guarded["qaFlags"] = flags
+    original_reason = str(guarded.get("reason") or "").strip()
+    guarded["reason"] = f"{original_reason} | {reason}" if original_reason else reason
+    return guarded
+
+
+def spoken_norm(line: dict[str, Any]) -> str:
+    return normalize_for_semantic_review(str(line.get("text") or ""))
+
+
+def is_spoken_line(line: dict[str, Any]) -> bool:
+    return line.get("lineType") != "pause" and bool(spoken_norm(line))
+
+
+def nearest_kept_before(lines: list[dict[str, Any]], index: int, excluded: set[int], limit: int = 8) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for previous in reversed(lines[max(0, index - limit) : index]):
+        if id(previous) in excluded or previous.get("deleted") or not is_spoken_line(previous):
+            continue
+        out.insert(0, previous)
+        if len(out) >= 2:
+            break
+    return out
+
+
+def nearest_kept_after(lines: list[dict[str, Any]], index: int, excluded: set[int], limit: int = 8) -> dict[str, Any] | None:
+    for next_line in lines[index + 1 : min(len(lines), index + 1 + limit)]:
+        if id(next_line) in excluded or next_line.get("deleted") or not is_spoken_line(next_line):
+            continue
+        return next_line
+    return None
+
+
+def line_gap(left: dict[str, Any], right: dict[str, Any]) -> float:
+    return float(right.get("start") or 0.0) - float(left.get("end") or left.get("start") or 0.0)
+
+
+def has_meaningful_extra(target_norm: str, anchor_norm: str) -> bool:
+    if not anchor_norm or anchor_norm not in target_norm:
+        return False
+    tail = target_norm.replace(anchor_norm, "", 1)
+    return len(tail) >= 6 or bool(re.search(r"[0-9a-z]", tail))
+
+
+def delete_needs_keep_after_review(lines: list[dict[str, Any]], indices: list[int]) -> str | None:
+    targets = [lines[index] for index in sorted(indices) if is_spoken_line(lines[index])]
+    if not targets:
+        return None
+    excluded = {id(line) for line in targets}
+    ordered_indices = sorted(indices)
+    first_index = ordered_indices[0]
+    contiguous = all(right == left + 1 for left, right in zip(ordered_indices, ordered_indices[1:]))
+
+    if contiguous:
+        target_norm = "".join(spoken_norm(line) for line in targets)
+        previous_kept = nearest_kept_before(lines, first_index, excluded)
+        previous_norm = "".join(spoken_norm(line) for line in previous_kept)
+        if previous_kept and line_gap(previous_kept[-1], targets[0]) <= 16.0:
+            if has_meaningful_extra(target_norm, previous_norm):
+                return "后版包含前面保留句且有新增内容，按删前保后规则转待审"
+            for previous in previous_kept:
+                previous_single = spoken_norm(previous)
+                if len(previous_single) >= 8 and has_meaningful_extra(target_norm, previous_single):
+                    return "后版扩展了前面保留句，按删前保后规则转待审"
+
+    for index in ordered_indices:
+        target = lines[index]
+        norm = spoken_norm(target)
+        if not (1 <= len(norm) <= 4):
+            continue
+        if re.search(r"[A-Za-z0-9]", str(target.get("text") or "")):
+            continue
+        previous_kept = nearest_kept_before(lines, index, excluded)
+        next_kept = nearest_kept_after(lines, index, excluded)
+        if not previous_kept or not next_kept:
+            continue
+        if previous_kept and line_gap(previous_kept[-1], target) <= 2.0 and line_gap(target, next_kept) <= 2.0:
+            return "短片段夹在两句保留内容中间，按断句风险转待审"
+    return None
 
 
 def should_apply_suggestion(suggestion: dict[str, Any], confidence_override: set[str] | None) -> bool:
@@ -268,6 +355,12 @@ def apply_suggestions(
             stats["pending"] += 1
             continue
         if action in {"delete", "restore", "replace"}:
+            if action == "delete":
+                guard_reason = delete_needs_keep_after_review(lines, indices)
+                if guard_reason:
+                    mark_pending(lines, guarded_pending_suggestion(suggestion, guard_reason), indices)
+                    stats["pending"] += 1
+                    continue
             changed = apply_simple(lines, suggestion, indices)
         elif action == "replace_and_split":
             changed = apply_replace_and_split(lines, suggestion, indices)

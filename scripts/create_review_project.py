@@ -371,6 +371,7 @@ The import step has already generated timed review lines from `{transcript}`, th
 - Conservative deletion lines may already be marked for repeated speech, false starts, long gaps, or clearly discarded takes.
 - Reference-grouped projects show reference-script semantic groups plus spoken take candidates. Keep audio as truth; use the reference for terminology, numbers, segmentation, and obvious ASR fixes.
 - Follow the chinese-subtitle skill for QA: check semantic bad breaks, protected terms, numbers/units, repeated takes, and long pause/breath cuts.
+- Repeated takes default to delete-before/keep-after. Do not high-confidence delete a later take only because an earlier line matched the reference; keep the later take when it is close-quality, smoother, more complete, or bridges adjacent reference units.
 - For long narration, use the fast review path first: a middle-thinking Direct EDL pass creates a compact keep/delete/review plan with evidence lineIds, then a take-clustering validator checks missing-reference gaps, orphan tails, truncated/time-overlap lines, repeated-take chains, and dense metric runs.
 - Browser/manual review should focus on Direct EDL reviewItems, clustering conflicts, and low-confidence audio questions. Do not send hundreds of line-level QA flags to the user.
 - Keep `scriptLines[].start/end` on original media time.

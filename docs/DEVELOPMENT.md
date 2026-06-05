@@ -67,7 +67,7 @@ interactive-video-cutter/
 4. `scripts/apply_semantic_review_suggestions.py`
    - Applies structured LLM semantic review suggestions to `interactive_review_state.json`.
    - Defaults to action-aware confidence: delete/restore require `high`, replace/re-split allow `high` or `medium`.
-   - Marks low-confidence suggestions, and medium-confidence delete/restore suggestions, as QA flags for browser review instead of applying them.
+   - Marks low-confidence suggestions, medium-confidence delete/restore suggestions, and delete suggestions that violate delete-before/keep-after review guards as QA flags for browser review instead of applying them.
 
 5. `scripts/transcribe_qwen3.py`
    - Extracts mono 16 kHz temporary audio chunks with FFmpeg from the selected ASR input.
