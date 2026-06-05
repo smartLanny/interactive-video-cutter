@@ -31,6 +31,12 @@ def main() -> int:
     parser.add_argument("--project", help="Manifest project id; defaults to manifest defaultProject")
     parser.add_argument("--format", choices=["fcpxml"], default="fcpxml", help="Timeline handoff format")
     parser.add_argument("--render", action="store_true", help="Also render preview media via the server export path")
+    parser.add_argument(
+        "--output-dir",
+        help="Optional export directory under the project's exportDir. Use 'auto' for a timestamped subdirectory; do not combine with --timestamped.",
+    )
+    parser.add_argument("--naming-prefix", help="Optional safe prefix for generated export file names")
+    parser.add_argument("--timestamped", action="store_true", help="Write into a timestamped non-overwriting subdirectory")
     args = parser.parse_args()
 
     server = Path(args.server).expanduser().resolve()
@@ -44,7 +50,13 @@ def main() -> int:
     module.load_projects(manifest)
     project = module.get_project(args.project)
     state = module.load_state(project)
-    result = module.export_state(project, state, render=args.render)
+    options_payload = {
+        "outputDir": args.output_dir or "",
+        "namingPrefix": args.naming_prefix or "",
+        "timestamped": args.timestamped,
+    }
+    options = module.export_options_from_payload(project, options_payload)
+    result = module.export_state(project, state, render=args.render, options=options)
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
 

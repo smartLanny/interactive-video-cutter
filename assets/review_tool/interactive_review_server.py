@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import array
 import csv
 import hashlib
 import json
@@ -10,6 +11,7 @@ import os
 import re
 import secrets
 import subprocess
+import sys
 import threading
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -33,6 +35,7 @@ PROJECTS: dict[str, "ProjectConfig"] = {}
 DEFAULT_PROJECT_ID = ""
 MANIFEST_PATH = DEFAULT_MANIFEST
 SERVER_MUTEX = threading.RLock()
+WAVEFORM_CACHE: dict[tuple[str, str, int, str], list[dict[str, float]]] = {}
 
 
 @dataclass(frozen=True)
@@ -57,6 +60,12 @@ class ProjectConfig:
     source_timecode_start: str = "00:00:00:00"
     davinci_media_path: str = ""
     handoff_notes: str = ""
+
+
+@dataclass(frozen=True)
+class ExportOptions:
+    output_dir: Path
+    naming_prefix: str = ""
 
 
 class RevisionConflict(RuntimeError):
@@ -194,6 +203,77 @@ def write_text_atomic(path: Path, text: str) -> None:
 
 def write_json_atomic(path: Path, payload: dict | list) -> None:
     write_text_atomic(path, json.dumps(payload, ensure_ascii=False, indent=2))
+
+
+def safe_name_part(value: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", value.strip())
+    cleaned = cleaned.strip(".-")
+    return cleaned[:80]
+
+
+def safe_prefix_part(value: str) -> str:
+    return re.sub(r"[^A-Za-z0-9._-]+", "-", value.strip())[:80]
+
+
+def allocate_unique_child_dir(parent: Path, name: str) -> Path:
+    parent.mkdir(parents=True, exist_ok=True)
+    for index in range(1, 1000):
+        suffix = "" if index == 1 else f"-{index}"
+        candidate = parent / f"{name}{suffix}"
+        try:
+            candidate.mkdir(exist_ok=False)
+            return candidate
+        except FileExistsError:
+            continue
+    raise RuntimeError(f"could not allocate export directory under {parent}")
+
+
+def export_url(project: ProjectConfig, path: Path) -> str | None:
+    resolved = path.resolve()
+    export_dir = project.export_dir.resolve()
+    if not is_within(resolved, export_dir):
+        return None
+    rel = resolved.relative_to(export_dir).as_posix()
+    return f"/exports/{project.id}/{quote(rel)}"
+
+
+def export_file(options: ExportOptions, name: str) -> Path:
+    return options.output_dir / f"{options.naming_prefix}{name}"
+
+
+def default_export_options(project: ProjectConfig) -> ExportOptions:
+    return ExportOptions(project.export_dir)
+
+
+def export_options_from_payload(project: ProjectConfig, payload: dict) -> ExportOptions:
+    output_dir = project.export_dir
+    raw_output_dir = str(payload.get("outputDir") or "").strip()
+    timestamped = bool(payload.get("timestamped") or payload.get("timestampedExport"))
+    auto_output_dir = False
+    if raw_output_dir and timestamped and raw_output_dir.lower() not in {"auto", "timestamp", "timestamped"}:
+        raise ValueError("timestamped export cannot be combined with an explicit outputDir; use outputDir=auto")
+    if raw_output_dir:
+        if raw_output_dir.lower() in {"auto", "timestamp", "timestamped"}:
+            timestamped = True
+            auto_output_dir = True
+        else:
+            candidate = Path(raw_output_dir).expanduser()
+            if not candidate.is_absolute():
+                candidate = project.export_dir / candidate
+            output_dir = candidate.resolve()
+            if not is_within(output_dir, project.export_dir):
+                raise ValueError(f"outputDir must stay under project exportDir: {project.export_dir}")
+    if timestamped and (auto_output_dir or not raw_output_dir):
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        base = safe_name_part(f"{project.id}-{stamp}") or stamp
+        output_dir = allocate_unique_child_dir(project.export_dir, base).resolve()
+    raw_prefix = str(payload.get("namingPrefix") or payload.get("prefix") or "").strip()
+    naming_prefix = safe_prefix_part(raw_prefix)
+    if raw_prefix and naming_prefix != raw_prefix:
+        raise ValueError("namingPrefix may only contain letters, numbers, dot, underscore, and hyphen")
+    if naming_prefix and not naming_prefix.endswith(("-", "_", ".")):
+        naming_prefix = f"{naming_prefix}-"
+    return ExportOptions(output_dir=output_dir, naming_prefix=naming_prefix)
 
 
 def ensure_no_conflict(project: ProjectConfig, base_revision: str | None, force: bool = False) -> None:
@@ -383,6 +463,97 @@ def media_path_for(project: ProjectConfig, kind: str) -> Path | None:
     if kind == "preview-media":
         return project.preview_media
     return None
+
+
+def waveform_media_for(project: ProjectConfig, kind: str = "") -> Path | None:
+    if kind:
+        return media_path_for(project, kind)
+    return project.draft_media or project.source_media
+
+
+def waveform_cache_key(project: ProjectConfig, path: Path, bins: int) -> tuple[str, str, int, str]:
+    stat = path.stat()
+    revision = f"{stat.st_mtime_ns}:{stat.st_size}"
+    return (project.id, str(path), bins, revision)
+
+
+def build_waveform_peaks(path: Path, bins: int) -> list[dict[str, float]]:
+    command = [
+        "ffmpeg",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-i",
+        str(path),
+        "-vn",
+        "-ac",
+        "1",
+        "-ar",
+        "8000",
+        "-f",
+        "s16le",
+        "pipe:1",
+    ]
+    proc = subprocess.run(command, check=True, capture_output=True, timeout=120)
+    raw = proc.stdout
+    if len(raw) < 2:
+        return []
+    if len(raw) % 2:
+        raw = raw[:-1]
+    samples = array.array("h")
+    samples.frombytes(raw)
+    if sys.byteorder != "little":
+        samples.byteswap()
+    total = len(samples)
+    if total <= 0:
+        return []
+
+    buckets: list[tuple[int, int, float]] = []
+    max_abs = 0
+    for index in range(bins):
+        start = int(index * total / bins)
+        end = int((index + 1) * total / bins)
+        if end <= start:
+            end = min(total, start + 1)
+        window = samples[start:end]
+        if not window:
+            buckets.append((0, 0, 0.0))
+            continue
+        low = min(window)
+        high = max(window)
+        max_abs = max(max_abs, abs(low), abs(high))
+        center = (start + end) // 2
+        trace_start = max(start, center - 8)
+        trace_end = min(end, trace_start + 16)
+        trace_window = samples[trace_start:trace_end] or window[:1]
+        trace = sum(trace_window) / max(1, len(trace_window))
+        buckets.append((low, high, trace))
+
+    scale = max(max_abs, 1)
+    return [
+        {
+            "min": max(-1.0, min(1.0, low / scale)),
+            "max": max(-1.0, min(1.0, high / scale)),
+            "trace": max(-1.0, min(1.0, trace / scale)),
+        }
+        for low, high, trace in buckets
+    ]
+
+
+def waveform_peaks(project: ProjectConfig, kind: str, bins: int) -> tuple[Path, list[dict[str, float]]]:
+    path = waveform_media_for(project, kind)
+    if not path:
+        raise FileNotFoundError("waveform media not found")
+    bins = max(120, min(1200, bins))
+    key = waveform_cache_key(project, path, bins)
+    with SERVER_MUTEX:
+        cached = WAVEFORM_CACHE.get(key)
+    if cached is not None:
+        return path, cached
+    peaks = build_waveform_peaks(path, bins)
+    with SERVER_MUTEX:
+        WAVEFORM_CACHE[key] = peaks
+    return path, peaks
 
 
 def parse_srt(path: Path) -> list[dict]:
@@ -1176,10 +1347,11 @@ def write_davinci_handoff(
     intervals: list[dict],
     export_paths: dict[str, Path],
     mode: str,
+    options: ExportOptions,
 ) -> dict[str, Path]:
-    handoff_json = project.export_dir / "davinci_handoff.json"
-    handoff_readme = project.export_dir / "davinci_handoff_readme.txt"
-    keep_csv = project.export_dir / "davinci_keep_segments.csv"
+    handoff_json = export_file(options, "davinci_handoff.json")
+    handoff_readme = export_file(options, "davinci_handoff_readme.txt")
+    keep_csv = export_file(options, "davinci_keep_segments.csv")
     write_keep_csv(keep, keep_csv)
     payload = {
         "project": {
@@ -1329,22 +1501,23 @@ def render_media(project: ProjectConfig, segments: list[dict], output: Path) -> 
     render_audio(project, segments, output)
 
 
-def export_state(project: ProjectConfig, state: dict, render: bool = False) -> dict:
-    project.export_dir.mkdir(parents=True, exist_ok=True)
+def export_state(project: ProjectConfig, state: dict, render: bool = False, options: ExportOptions | None = None) -> dict:
+    options = options or default_export_options(project)
+    options.output_dir.mkdir(parents=True, exist_ok=True)
     deletes = load_deletes(project)
     if state.get("useScriptLines", True) and state.get("scriptLines"):
         lines = state.get("scriptLines", [])
         intervals = script_delete_intervals(lines)
         keep = build_keep_from_intervals(intervals, project.duration)
-        state_out = project.export_dir / "review_state.json"
-        srt_out = project.export_dir / "script_selected_timeline.srt"
-        current_srt_out = project.export_dir / "script_original_timeline.srt"
-        edl_out = project.export_dir / "script_selected_delete_edl.json"
-        delete_out = project.export_dir / "script_delete_intervals.csv"
-        line_out = project.export_dir / "script_lines.csv"
-        fcpxml_out = project.export_dir / "davinci_timeline.fcpxml"
-        selected_alignment_base = project.export_dir / "script_selected_text_time_alignment"
-        original_alignment_base = project.export_dir / "script_original_text_time_alignment"
+        state_out = export_file(options, "review_state.json")
+        srt_out = export_file(options, "script_selected_timeline.srt")
+        current_srt_out = export_file(options, "script_original_timeline.srt")
+        edl_out = export_file(options, "script_selected_delete_edl.json")
+        delete_out = export_file(options, "script_delete_intervals.csv")
+        line_out = export_file(options, "script_lines.csv")
+        fcpxml_out = export_file(options, "davinci_timeline.fcpxml")
+        selected_alignment_base = export_file(options, "script_selected_text_time_alignment")
+        original_alignment_base = export_file(options, "script_original_text_time_alignment")
         selected_cues = script_lines_to_cues(lines, keep)
         original_cues = script_lines_to_cues(lines)
         write_json_atomic(state_out, state)
@@ -1367,9 +1540,11 @@ def export_state(project: ProjectConfig, state: dict, render: bool = False) -> d
             "scriptLinesCsv": line_out,
             "davinciTimelineFcpxml": fcpxml_out,
             **alignment_paths,
-        }, "scriptLines")
+        }, "scriptLines", options)
         result = {
             "mode": "scriptLines",
+            "outputDir": str(options.output_dir),
+            "namingPrefix": options.naming_prefix,
             "state": str(state_out),
             "srt": str(srt_out),
             "currentTimelineSrt": str(current_srt_out),
@@ -1390,30 +1565,34 @@ def export_state(project: ProjectConfig, state: dict, render: bool = False) -> d
         }
         if render:
             suffix = ".mp4" if project.media_type == "video" else ".m4a"
-            media_out = project.export_dir / f"selected_delete_preview{suffix}"
+            media_out = export_file(options, f"selected_delete_preview{suffix}")
             render_media(project, keep, media_out)
             result["media"] = str(media_out)
-            result["mediaUrl"] = f"/exports/{project.id}/{media_out.name}"
+            media_url = export_url(project, media_out)
+            if media_url:
+                result["mediaUrl"] = media_url
             if project.media_type == "video":
                 result["video"] = str(media_out)
-                result["videoUrl"] = result["mediaUrl"]
+                if media_url:
+                    result["videoUrl"] = media_url
             else:
                 result["audio"] = str(media_out)
-                result["audioUrl"] = result["mediaUrl"]
+                if media_url:
+                    result["audioUrl"] = media_url
         return result
 
     selected = state.get("selectedDeletes", {})
     keep = build_keep_segments(project, deletes, selected)
     default_selected = {str(item["id"]): True for item in deletes}
     default_keep = build_keep_segments(project, deletes, default_selected)
-    state_out = project.export_dir / "review_state.json"
-    current_srt_out = project.export_dir / "edited_current_timeline.srt"
-    srt_out = project.export_dir / "edited_selected_timeline.srt"
-    edl_out = project.export_dir / "selected_delete_edl.json"
-    delete_out = project.export_dir / "selected_delete_intervals.csv"
-    fcpxml_out = project.export_dir / "davinci_timeline.fcpxml"
-    selected_alignment_base = project.export_dir / "edited_selected_text_time_alignment"
-    original_alignment_base = project.export_dir / "edited_original_text_time_alignment"
+    state_out = export_file(options, "review_state.json")
+    current_srt_out = export_file(options, "edited_current_timeline.srt")
+    srt_out = export_file(options, "edited_selected_timeline.srt")
+    edl_out = export_file(options, "selected_delete_edl.json")
+    delete_out = export_file(options, "selected_delete_intervals.csv")
+    fcpxml_out = export_file(options, "davinci_timeline.fcpxml")
+    selected_alignment_base = export_file(options, "edited_selected_text_time_alignment")
+    original_alignment_base = export_file(options, "edited_original_text_time_alignment")
     write_json_atomic(state_out, state)
     cues = state.get("cues", [])
     write_srt(cues, current_srt_out)
@@ -1435,8 +1614,10 @@ def export_state(project: ProjectConfig, state: dict, render: bool = False) -> d
         "deleteIntervalsCsv": delete_out,
         "davinciTimelineFcpxml": fcpxml_out,
         **alignment_paths,
-    }, "legacySelectedDeletes")
+    }, "legacySelectedDeletes", options)
     result = {
+        "outputDir": str(options.output_dir),
+        "namingPrefix": options.naming_prefix,
         "state": str(state_out),
         "srt": str(srt_out),
         "currentTimelineSrt": str(current_srt_out),
@@ -1456,16 +1637,20 @@ def export_state(project: ProjectConfig, state: dict, render: bool = False) -> d
     }
     if render:
         suffix = ".mp4" if project.media_type == "video" else ".m4a"
-        media_out = project.export_dir / f"selected_delete_preview{suffix}"
+        media_out = export_file(options, f"selected_delete_preview{suffix}")
         render_media(project, keep, media_out)
         result["media"] = str(media_out)
-        result["mediaUrl"] = f"/exports/{project.id}/{media_out.name}"
+        media_url = export_url(project, media_out)
+        if media_url:
+            result["mediaUrl"] = media_url
         if project.media_type == "video":
             result["video"] = str(media_out)
-            result["videoUrl"] = result["mediaUrl"]
+            if media_url:
+                result["videoUrl"] = media_url
         else:
             result["audio"] = str(media_out)
-            result["audioUrl"] = result["mediaUrl"]
+            if media_url:
+                result["audioUrl"] = media_url
     return result
 
 
@@ -1639,6 +1824,30 @@ class Handler(BaseHTTPRequestHandler):
             except KeyError:
                 json_response(self, {"ok": False, "error": "unknown project"}, 404)
             return
+        if parsed.path == "/api/waveform":
+            try:
+                project = project_from_query(parsed)
+                query = parse_qs(parsed.query)
+                kind = str(query.get("kind", [""])[0] or "")
+                try:
+                    bins = int(query.get("bins", ["720"])[0])
+                except ValueError:
+                    bins = 720
+                path, peaks = waveform_peaks(project, kind, bins)
+                json_response(self, {
+                    "ok": True,
+                    "project": project.id,
+                    "media": str(path),
+                    "bins": len(peaks),
+                    "peaks": peaks,
+                })
+            except KeyError:
+                json_response(self, {"ok": False, "error": "unknown project"}, 404)
+            except FileNotFoundError as exc:
+                json_response(self, {"ok": False, "error": str(exc)}, 404)
+            except Exception as exc:
+                json_response(self, {"ok": False, "error": str(exc)}, 500)
+            return
         if parsed.path == "/api/data":
             try:
                 project = project_from_query(parsed)
@@ -1786,7 +1995,8 @@ class Handler(BaseHTTPRequestHandler):
                         "revision": new_revision,
                     })
                     return
-                result = export_state(project, state, render=(parsed.path == "/api/render"))
+                options = export_options_from_payload(project, payload)
+                result = export_state(project, state, render=(parsed.path == "/api/render"), options=options)
                 json_response(self, {
                     "ok": True,
                     "result": result,
@@ -1801,6 +2011,8 @@ class Handler(BaseHTTPRequestHandler):
                     "error": "revision conflict",
                     "currentRevision": exc.current_revision,
                 }, 409)
+            except ValueError as exc:
+                json_response(self, {"ok": False, "error": str(exc)}, 400)
             except LockConflict as exc:
                 json_response(self, {
                     "ok": False,
