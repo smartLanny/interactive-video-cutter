@@ -577,7 +577,7 @@
   <div class="bar">
     <div>
       <h1 id="pageTitle">交互式全文稿审片</h1>
-      <div class="sub">一行一句；删除线行会被剪掉，取消删除线就保留。↑/↓ 切换审阅行；←/→ 移动文字光标；Enter 拆行；行首 Backspace 合并上行；⌘J/Ctrl+J 合并下行；空行 Delete 转删除线；选中文字后 ⌘D/Ctrl+D 自动切分并给选区划删除线。</div>
+      <div class="sub">一行一句；删除线行会被剪掉，取消删除线就保留。↑/↓ 切换审阅行；⌘P/Ctrl+P 播放当前行；←/→ 移动文字光标；Enter 拆行；行首 Backspace 合并上行；⌘J/Ctrl+J 合并下行；空行 Delete 转删除线；选中文字后 ⌘D/Ctrl+D 自动切分并给选区划删除线。</div>
       <div class="project-row">
         <label for="projectSelect" class="sub">项目</label>
         <select id="projectSelect"></select>
@@ -972,8 +972,6 @@ function cleanReviewText(text) {
     .replace(/\./g, "")
     .replaceAll(DECIMAL_DOT_TOKEN, ".")
     .replace(/\s+/g, " ")
-    .replace(/\s+(?=[\u3400-\u9fff])/g, "")
-    .replace(/(?<=[\u3400-\u9fff])\s+/g, "")
     .trim();
 }
 
@@ -1590,8 +1588,9 @@ function syncTextFromElement(el) {
   if (!canEdit()) return;
   const line = lineById(el.dataset.lineText);
   if (!line) return;
-  line.text = cleanReviewText(String(el.innerText || "").replace(/\n/g, " "));
-  if (el.innerText !== line.text) el.innerText = line.text;
+  line.text = String(el.textContent ?? el.innerText ?? "")
+    .replace(/\u00a0/g, " ")
+    .replace(/[\r\n\t]+/g, " ");
   setActive(line.id, false);
   setDirty();
   renderMetrics();
@@ -2112,6 +2111,13 @@ document.addEventListener("keydown", (e) => {
     saveState(false);
     return;
   }
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "p") {
+    e.preventDefault();
+    if (textEl) syncTextFromElement(textEl);
+    const line = lineById(textEl?.dataset.lineText || activeLineId);
+    if (line) playRange(line.start, line.end, "source");
+    return;
+  }
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "d") {
     e.preventDefault();
     if (textEl && splitSelectionAsDeleted(textEl)) return;
@@ -2126,12 +2132,6 @@ document.addEventListener("keydown", (e) => {
   if (!isEditable && e.key === "/") {
     e.preventDefault();
     $("search").focus();
-    return;
-  }
-  if (!isEditable && e.key.toLowerCase() === "p") {
-    e.preventDefault();
-    const line = lineById(activeLineId);
-    if (line) playRange(line.start, line.end, "source");
     return;
   }
   if (!isEditable && e.key.toLowerCase() === "j") {

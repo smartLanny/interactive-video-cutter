@@ -171,6 +171,7 @@ The page shows the polished script as editable lines:
 Useful shortcuts:
 
 - `Cmd/Ctrl + S`: save
+- `Cmd/Ctrl + P`: play current line
 - `Cmd/Ctrl + D`: toggle delete line
 - `ArrowDown` / `ArrowUp`: move to next/previous review line
 - `Enter`: split line
@@ -341,6 +342,7 @@ http://<剪辑机IP>:8765
 ### 审阅快捷键
 
 - `Cmd/Ctrl + S`：保存
+- `Cmd/Ctrl + P`：播放当前行
 - `Cmd/Ctrl + D`：切换删除线
 - `ArrowDown` / `ArrowUp`：切换到下一/上一条审阅行
 - `Enter`：拆行
