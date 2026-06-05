@@ -143,7 +143,7 @@ fast ASR
 AI polish is a state-editing stage, not only a suggestion report. Before it writes, back up the review state as `interactive_review_state.before-ai-polish.json`. The polish pass should:
 
 - Delete repeated takes, false starts, abandoned fragments, long pauses, and obvious waste lines when confidence is high.
-- For repeated takes, prefer delete-before/keep-after when quality is close, because later takes are usually corrected. Keep earlier takes only when the later take is clearly worse.
+- For repeated takes, prefer delete-before/keep-after when quality is close, because later takes are usually corrected. Keep earlier takes only when the later take is clearly worse. This applies to obvious repeated spoken content even if the earlier take was already aligned to the reference.
 - Treat long ASR timestamp gaps as review hazards. Mark them with `asr-timestamp-gap` and human-review flags instead of allowing high-confidence deletion without targeted quality ASR or listening.
 - Fix clear ASR term, model, number, and unit mistakes when the audio/ASR supports the edit.
 - Improve semantic line breaks only when timing boundaries remain safe.
@@ -167,6 +167,8 @@ The page shows the polished script as editable lines:
 - Text edits are saved into `interactive_review_state.json`.
 - A project lock prevents two reviewers from silently overwriting each other.
 - Video projects use the extracted audio proxy for browser review; the original video remains the export/XML source.
+- Per-line `播放` and `Cmd/Ctrl + P` are exact source-timeline checks for the current line. They should not include hidden pre-roll/post-roll or edited-timeline skip behavior.
+- The `删线音频` player is the continuous final-audio preview: it plays the source/proxy media while automatically jumping over deleted intervals instead of muting deleted audio in place.
 
 Useful shortcuts:
 
@@ -197,8 +199,9 @@ For video files, the workflow is:
 11. The review state stores `scriptLines[]` with original source-video `start/end` times.
 12. Deleted lines become source-time delete intervals.
 13. Export builds keep segments from the source timeline.
-14. FCPXML uses the original video as the source asset.
-15. Optional render uses FFmpeg `trim/atrim` + `concat` with 30 ms audio fades at segment boundaries.
+14. Keep segments must be continuous in the output timeline even when source-time gaps are skipped.
+15. FCPXML uses the original video as the source asset.
+16. Optional render uses FFmpeg `trim/atrim` + `concat` with 30 ms audio fades at segment boundaries.
 
 Default video render encoding is `libx264`. Hardware encoders can be selected:
 
@@ -335,7 +338,7 @@ http://<剪辑机IP>:8765
 - `edit/ai_polish_suggestions.json`
 - 更新后的 `interactive_review_state.json`
 
-高置信重复 take、废稿、长停顿可以直接加删除线；重复 take 质量接近时默认删前保后，因为后段通常是修正后的版本。长 ASR 词时间空窗不能当普通高置信停顿处理，要标 `asr-timestamp-gap` 并通过 targeted quality ASR 或人工听审确认。明确的术语、型号、数字和单位错误可以直接修。听不准的密集指标、长时间窗、off-reference 但可能有效的口播，标 `needs_human` / `needs-review` / `ai-polish-focus`，留到网页听审。MiMo 等外部 AI 只作为可选复审，不默认自动写回 state。
+高置信重复 take、废稿、长停顿可以直接加删除线；重复 take 质量接近时默认删前保后，因为后段通常是修正后的版本。即使前段已经对齐到参考文案，只要后段是同一句或同一语义的更完整/更顺口复念，也应优先保后段。长 ASR 词时间空窗不能当普通高置信停顿处理，要标 `asr-timestamp-gap` 并通过 targeted quality ASR 或人工听审确认。明确的术语、型号、数字和单位错误可以直接修。听不准的密集指标、长时间窗、off-reference 但可能有效的口播，标 `needs_human` / `needs-review` / `ai-polish-focus`，留到网页听审。MiMo 等外部 AI 只作为可选复审，不默认自动写回 state。
 
 单位按参考文案统一：该写 `W`、`℃`、`Hz`、`GHz`、`GB`、`Wh`、`nits` 时不要改成 `瓦`、`摄氏度` 等口语写法。
 
@@ -349,6 +352,8 @@ http://<剪辑机IP>:8765
 - 行首 `Backspace`：并入上一行
 - `Cmd/Ctrl + J`：并入下一行
 - 空行 `Delete` / `Backspace`：删除这一行
+
+逐行 `播放` 和 `Cmd/Ctrl + P` 是源时间线精确听审，只播放当前行的原始时间范围，不应带隐藏前贴/后贴，也不应套用删线跳过逻辑。右侧 `删线音频` 是连续最终音频预览：播放同一份源/代理音频，但自动跳过删除线区间，相当于提前听剪后完整版。
 
 ### 导出
 

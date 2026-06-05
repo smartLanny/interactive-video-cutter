@@ -56,7 +56,7 @@ interactive-video-cutter/
 3. AI polish before browser review
    - Back up `<workdir>/interactive_review_state.json` to `<workdir>/interactive_review_state.before-ai-polish.json` before writing.
    - Codex middle agent is the default writer. It should directly apply high-confidence repeated-take deletes, false-start deletes, obvious term/number/unit fixes, and safe semantic cleanup to `interactive_review_state.json`.
-   - Repeated-take cleanup uses delete-before/keep-after when take quality is close. Later takes are preferred unless they are clearly incomplete, lower confidence, or semantically wrong.
+   - Repeated-take cleanup uses delete-before/keep-after when take quality is close. Later takes are preferred unless they are clearly incomplete, lower confidence, or semantically wrong. Apply this to repeated spoken content even when an earlier attempt was already aligned to the reference.
    - Long ASR word-time gaps are review hazards. Preprocessing marks them with `asr-timestamp-gap` plus human-review flags; AI polish must not treat those windows as high-confidence deletes without targeted quality ASR or listening.
    - Suggestions-only is not enough for the intended workflow; the browser should open a pre-polished state, not a raw transcript.
    - Write `<workdir>/edit/ai_polish_report.md` and `<workdir>/edit/ai_polish_suggestions.json` for audit and rollback context.
@@ -108,6 +108,8 @@ interactive-video-cutter/
    - Keyboard-first editing.
    - Renders `qaFlags` as colored chips and provides `全部`, `重点`, `ASR空窗`, `密集数字`, `术语风险`, and `删除建议` filters.
    - Search includes visible text, source notes, raw flags, and Chinese risk labels.
+   - Per-line `播放` and `Cmd/Ctrl+P` play the selected line's original source range exactly.
+   - The `删线音频` player previews the final kept audio by auto-skipping deleted intervals on the source/proxy media.
 
 ## Data Model
 
@@ -140,6 +142,12 @@ Exports:
 - `davinci_timeline.fcpxml`: importable editing timeline.
 - `selected_delete_preview.mp4/.m4a`: optional FFmpeg render.
 
+Playback semantics:
+
+- Per-line play is for checking text/time alignment. It uses `scriptLines[].start/end` on the source timeline and should not add hidden pre-roll/post-roll or edited-skip behavior.
+- The edited preview player is for checking the final listen-through. It starts from source/proxy media time and automatically jumps across deletion intervals, so deleted audio should not be heard and output-time gaps should not be introduced.
+- If a user reports that line `N` plays line `N-1` or `N+1`, first inspect source `start/end`, browser pre-roll/post-roll, skip-preview code paths, and stale browser cache before assuming the ASR text itself is wrong.
+
 Project setup also writes `<workdir>/edit/takes_packed.md` as a lightweight transcript reading view and `<workdir>/edit/semantic_review_packets.jsonl` for focused LLM follow-up. The fast review path is reference-grouped preprocessing, Codex middle AI polish direct state write, Direct EDL/take-clustering validation, then browser review only for focus items, conflicts, and low-confidence audio questions.
 
 ## Video Logic
@@ -152,6 +160,7 @@ Video import and export are intentionally conservative:
 - All review line timings stay on the original source-video timeline.
 - Deletions become source-time intervals.
 - Keep segments are calculated as the inverse of delete intervals.
+- Keep segments concatenate on the output timeline with no gaps even when source-time gaps are skipped.
 - FCPXML references the original media asset.
 - Direct render uses FFmpeg `trim/atrim` and `concat`, with 30 ms audio fades at each keep-segment boundary.
 

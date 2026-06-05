@@ -674,6 +674,8 @@ let stopHandler = null;
 let stopMedia = null;
 let stopPollTimer = null;
 let editedSkipHandler = null;
+let editedSkipPollTimer = null;
+let editedSkipMedia = null;
 let busyMode = "";
 let lockToken = "";
 let lockStatus = { locked: false, heldByMe: false };
@@ -1925,21 +1927,39 @@ function sourceToOutputTime(value) {
 
 function applyEditedSkip(media) {
   if (!media) return;
-  const current = Number(media.currentTime) || 0;
-  for (const item of deletedIntervals()) {
-    if (current >= item.start && current < item.end - 0.02) {
-      media.currentTime = item.end + 0.01;
-      return;
-    }
+  let current = Number(media.currentTime) || 0;
+  const intervals = deletedIntervals();
+  for (let guard = 0; guard < intervals.length; guard += 1) {
+    const item = intervals.find(candidate => current >= candidate.start && current < candidate.end - 0.02);
+    if (!item) break;
+    current = item.end + 0.01;
+    media.currentTime = current;
   }
+}
+
+function clearEditedSkipPreview() {
+  const media = editedSkipMedia;
+  if (media && editedSkipHandler) {
+    media.removeEventListener("timeupdate", editedSkipHandler);
+    media.removeEventListener("seeking", editedSkipHandler);
+  }
+  if (editedSkipPollTimer) clearInterval(editedSkipPollTimer);
+  editedSkipHandler = null;
+  editedSkipPollTimer = null;
+  editedSkipMedia = null;
 }
 
 function attachEditedSkipPreview() {
   const media = document.querySelector("[data-edited-media]");
   if (!media) return;
-  if (editedSkipHandler) media.removeEventListener("timeupdate", editedSkipHandler);
+  clearEditedSkipPreview();
   editedSkipHandler = () => applyEditedSkip(media);
+  editedSkipMedia = media;
   media.addEventListener("timeupdate", editedSkipHandler);
+  media.addEventListener("seeking", editedSkipHandler);
+  editedSkipPollTimer = setInterval(() => {
+    if (!media.paused) applyEditedSkip(media);
+  }, 20);
   updateEditedPreviewInfo();
 }
 
@@ -1970,8 +1990,8 @@ function playRange(start, end, target = "source") {
   clearPlaybackStop();
   const startAt = Number(start) || 0;
   const endAt = Math.max(startAt + 0.05, Number(end) || startAt + 0.05);
-  const preRoll = target === "source" ? 0.06 : 0.15;
-  const postRoll = target === "source" ? 0.03 : 0.12;
+  const preRoll = target === "source" ? 0 : 0.15;
+  const postRoll = target === "source" ? 0 : 0.12;
   const stopAt = endAt + postRoll;
   stopHandler = () => {
     if (target === "edited") applyEditedSkip(media);
@@ -1984,7 +2004,7 @@ function playRange(start, end, target = "source") {
     : Math.max(0, startAt - preRoll);
   stopMedia = media;
   media.addEventListener("timeupdate", stopHandler);
-  stopPollTimer = setInterval(stopHandler, 30);
+  stopPollTimer = setInterval(stopHandler, target === "source" ? 10 : 30);
   const playResult = media.play();
   if (playResult?.catch) {
     playResult.catch(() => clearPlaybackStop());

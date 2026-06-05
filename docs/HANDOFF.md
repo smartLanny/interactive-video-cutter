@@ -27,12 +27,14 @@ ASR provider auto
 The browser review page should be a focused final-check surface:
 
 - Delete repeated takes, false starts, abandoned fragments, long pauses, and obvious waste lines when confidence is high.
-- For repeated takes, prefer delete-before/keep-after when quality is close, because later reads are usually corrections.
+- For repeated takes, prefer delete-before/keep-after when quality is close, because later reads are usually corrections. This includes repeated spoken content where an earlier attempt already matched the reference but a later take is more complete or smoother.
 - Treat long ASR timestamp gaps between meaningful speech lines as unsafe review windows. Mark `asr-timestamp-gap` plus human-review flags; do not high-confidence delete those windows without targeted quality ASR or listening.
 - Fix clear ASR term, model, number, and unit mistakes when the audio/ASR supports the edit.
 - Improve Chinese semantic line breaks only when timing boundaries remain safe.
 - Keep uncertain lines and mark them with `needs_human`, `needs-review`, or `ai-polish-focus`.
 - In the browser, surface these markers through colored chips and `重点`, `ASR空窗`, `密集数字`, `术语风险`, and `删除建议` filters instead of raw gray flag text.
+- Per-line `播放` and `Cmd/Ctrl+P` are exact source-timeline checks. They must play only the selected line's source range, without edited-timeline skipping or hidden pre-roll/post-roll that makes neighboring lines audible.
+- The `删线音频` player is the continuous final-audio preview. It should play source/proxy media while automatically jumping over deleted intervals, equivalent to listening to the kept result, not muting deleted regions in place.
 
 Audio/ASR remains the source of truth. A reference script may correct terminology, numbers, punctuation, and segmentation, but must not be used to insert unspoken sentences.
 
@@ -83,6 +85,8 @@ Before trusting an export, validate that:
 - Keep segments are continuous in output timeline.
 - Every kept `scriptLines[]` row is fully covered by at least one keep segment.
 - FCPXML/render paths point to the original media for video projects, not the audio proxy.
+- Browser line playback uses source-line timing and does not audibly bleed into adjacent rows on close boundaries.
+- Browser `删线音频` preview automatically skips deleted intervals and remains a faithful final-audio listening pass.
 
 ## Common Commands
 
