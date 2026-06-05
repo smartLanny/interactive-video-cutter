@@ -40,7 +40,12 @@ The left navigation remains light:
 - Treat `测试 UI 方向` as the accepted visual reference for this branch.
 - Line view follows the manuscript table direction: full-width rows, quiet source/output time columns, text-first reading, and a right status label.
 - Per-line visible action buttons are removed from the manuscript rows; play/delete/split/merge remain shortcut-driven on the active line.
+- Source/output time is hidden by default in line view and expands only after clicking the row number.
+- Top review pills are aggregate filters; row-side pills are the concrete hints for that line using the same Chinese taxonomy.
+- Raw ASR/LLM tag ids should not be exposed in the manuscript UI.
 - Continuous view keeps article reading as the main surface and uses a lightweight audit navigation rail for review targets.
+- Manuscript body text uses the built-in simplified Songti family (`Songti SC`) as the first font choice.
+- Expanded audio timeline must use decoded real media waveform when available, not simulated bars.
 
 ## Keyboard
 

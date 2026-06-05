@@ -429,7 +429,7 @@
   }
   .line-table-head {
     display: grid;
-    grid-template-columns: 34px 58px 118px 118px minmax(0, 1fr) 72px;
+    grid-template-columns: 34px 58px minmax(0, 1fr) 260px;
     gap: 10px;
     align-items: center;
     min-height: 38px;
@@ -440,7 +440,7 @@
   }
   .line-row {
     display: grid;
-    grid-template-columns: 34px 58px 118px 118px minmax(0, 1fr) 72px;
+    grid-template-columns: 34px 58px minmax(0, 1fr) 260px;
     gap: 10px;
     align-items: center;
     min-height: 53px;
@@ -484,6 +484,23 @@
     color: var(--muted);
     font-style: italic;
   }
+  .line-number-button {
+    display: inline-grid;
+    place-items: center;
+    min-width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .line-number-button:hover,
+  .line-row.time-expanded .line-number-button {
+    background: #fff7ea;
+    color: var(--accent);
+  }
   .line-play-marker {
     display: grid;
     place-items: center;
@@ -500,12 +517,18 @@
   }
   .line-status {
     justify-self: end;
-    color: var(--ok);
-    font-size: 13px;
-    font-weight: 520;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    min-width: 0;
   }
-  .line-status.deleted {
-    color: var(--danger);
+  .line-status .qa-flags {
+    justify-content: flex-end;
+    margin-top: 0;
+  }
+  .line-hint-empty {
+    color: var(--faint);
+    font-size: 12px;
   }
   .candidate-groups {
     display: grid;
@@ -552,6 +575,11 @@
     font-weight: 650;
     line-height: 1.35;
     overflow-wrap: anywhere;
+  }
+  .line-status .qa-chip {
+    min-height: 26px;
+    padding-inline: 8px;
+    font-size: 12px;
   }
   button.qa-chip {
     white-space: normal;
@@ -643,8 +671,18 @@
     color: var(--faint);
     font-variant-numeric: tabular-nums;
   }
-  .line-row .time { display: block; }
-  .line-row.deleted .time { color: #d45b50; }
+  .line-time-details {
+    display: none;
+    margin: 3px 0 1px 4px;
+    color: var(--muted);
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+  .line-row.time-expanded .line-time-details {
+    display: block;
+  }
+  .line-row.deleted .line-time-details { color: #d45b50; }
   .line-text {
     min-height: 0;
     padding: 3px 4px;
@@ -652,7 +690,7 @@
     outline: 0;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
-    font-family: Georgia, "Times New Roman", "Songti SC", "STSong", serif;
+    font-family: "Songti SC", "STSong", "SimSun", serif;
     font-size: 17px;
     line-height: 1.62;
   }
@@ -679,7 +717,7 @@
     max-width: 980px;
     margin: 0;
     padding: 28px 44px 42px 8px;
-    font-family: Georgia, "Times New Roman", "Songti SC", "STSong", serif;
+    font-family: "Songti SC", "STSong", "SimSun", serif;
     font-size: 20px;
     line-height: 2.12;
     letter-spacing: 0;
@@ -992,12 +1030,21 @@
     background: linear-gradient(180deg, #fffaf4 0%, #f5eadb 100%);
     overflow: hidden;
   }
-  .waveform > span:not(.timeline-delete-block):not(.timeline-selection):not(.timeline-playhead):not(.timeline-risk-mark):not(.range-handle) {
+  .waveform-bar {
     flex: 1 1 0;
     max-width: 7px;
     min-width: 2px;
     border-radius: 999px;
     background: rgba(190, 152, 105, 0.48);
+  }
+  .waveform-status {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    color: var(--muted);
+    font-size: 12px;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Arial, sans-serif;
   }
   .waveform .timeline-delete-block,
   .waveform .timeline-selection,
@@ -1347,6 +1394,11 @@ let lastTextMode = "lines";
 let timelineExpanded = false;
 let selectedDeleteInterval = null;
 let timelineSourceTime = 0;
+let expandedTimeLineId = null;
+let waveformPeaks = [];
+let waveformSignature = "";
+let waveformLoading = false;
+let waveformError = "";
 let qaFilter = "all";
 let undoStack = [];
 let redoStack = [];
@@ -1362,6 +1414,9 @@ const REVIEW_FILTERS = [
   { id: "delete-suggested", label: "删除建议" },
 ];
 const QA_FLAG_DEFS = [
+  { keys: ["semantic-llm-review"], label: "语义复核", css: "flag-review", category: "focus", filter: "focus", priority: true, search: ["语义", "复核", "LLM复核", "值得再看"] },
+  { keys: ["llm-suggestion-medium"], label: "中等建议", css: "flag-polish", category: "focus", filter: "focus", priority: true, search: ["中等建议", "建议再看", "LLM建议"] },
+  { keys: ["llm-suggestion-pending"], label: "建议待定", css: "flag-neutral", category: "focus", filter: "focus", priority: true, search: ["待定", "待确认", "建议再看"] },
   { keys: ["needs_human", "needs-human"], label: "人工复核", css: "flag-human", category: "focus", filter: "focus", priority: true, search: ["重点", "待审重点", "人审", "人工确认"] },
   { keys: ["needs-review", "needs_review"], label: "待审重点", css: "flag-review", category: "focus", filter: "focus", priority: true, search: ["复核", "重点审查", "人工听"] },
   { keys: ["ai-polish-focus"], label: "AI打磨重点", css: "flag-polish", category: "focus", filter: "focus", priority: true, search: ["AI polish", "重点打磨", "改稿重点"] },
@@ -1610,12 +1665,21 @@ function reviewFlagsHtml(item, relatedLines = []) {
     const raw = String(flag || "").trim();
     const label = flagLabel(raw);
     const filter = flagFilterId(raw);
-    const title = label === raw ? raw : `${label} (${raw})`;
+    const title = label;
     const attrs = filter ? ` type="button" data-review-filter="${escapeHtml(filter)}"` : "";
     const tag = filter ? "button" : "span";
     return `<${tag}${attrs} class="qa-chip ${escapeHtml(flagCssClass(raw))}" title="${escapeHtml(title)}">${escapeHtml(label)}</${tag}>`;
   }).join("");
   return `<div class="qa-flags" aria-label="待审重点">${chips}</div>`;
+}
+
+function lineHintsHtml(line) {
+  const flags = reviewFlagsHtml(line);
+  if (flags) return flags;
+  if (line.deleted) {
+    return `<div class="qa-flags" aria-label="删除提示"><button type="button" class="qa-chip flag-delete" data-review-filter="delete-suggested" title="删除段">删除段</button></div>`;
+  }
+  return `<span class="line-hint-empty">—</span>`;
 }
 
 function reviewClassListForItem(item, relatedLines = []) {
@@ -2021,6 +2085,7 @@ function mediaTagHtml(item, attr) {
 function renderMediaTabs() {
   const sourceItem = sourcePreviewItem();
   const editedItem = editedPreviewItem();
+  resetWaveform();
   $("sourceMediaMount").innerHTML = mediaTagHtml(sourceItem, "data-source-media");
   $("editedMediaMount").innerHTML = mediaTagHtml(editedItem, "data-edited-media");
   attachEditedSkipPreview();
@@ -2142,28 +2207,24 @@ function renderRows() {
   const header = `<div class="line-table-head" aria-hidden="true">
     <span></span>
     <span>#</span>
-    <span>源时间</span>
-    <span>成片时间</span>
     <span>文本内容</span>
-    <span>状态</span>
+    <span>提示</span>
   </div>`;
   $("scriptRows").innerHTML = rows.length ? `${header}${rows.map(line => {
     const deleted = Boolean(line.deleted);
     const active = String(line.id) === String(activeLineId);
     const pause = line.lineType === "pause";
-    const flags = reviewFlagsHtml(line);
-    const rowClass = ["line-row", deleted ? "deleted" : "", active ? "active" : "", pause ? "pause" : "", reviewClassListForItem(line)].filter(Boolean).join(" ");
+    const timeExpanded = String(expandedTimeLineId) === String(line.id);
+    const rowClass = ["line-row", deleted ? "deleted" : "", active ? "active" : "", pause ? "pause" : "", timeExpanded ? "time-expanded" : "", reviewClassListForItem(line)].filter(Boolean).join(" ");
     const marker = active ? "▶" : (reviewItemFlags(line).length ? "•" : "");
     return `<div class="${rowClass}" data-line-id="${line.id}">
       <div class="line-play-marker">${marker}</div>
-      <div><span class="line-number">${line.index}</span></div>
-      <div class="time source-time">${fmt(line.start)}</div>
-      <div class="time output-time">${deleted ? "–" : fmt(sourceToOutputTime(line.start))}</div>
+      <div><button class="line-number-button" type="button" data-toggle-time="${line.id}" title="展开源时间 / 成片时间">${line.index}</button></div>
       <div class="line-content">
         <div class="line-text" data-line-text="${line.id}" contenteditable="${editable ? "true" : "false"}" spellcheck="false">${escapeHtml(line.text)}</div>
-        ${flags}
+        <div class="line-time-details">源 ${fmt(line.start)}-${fmt(line.end)} · 成片 ${deleted ? "删除" : `${fmt(sourceToOutputTime(line.start))}-${fmt(sourceToOutputTime(line.end))}`}</div>
       </div>
-      <div class="line-status ${deleted ? "deleted" : "kept"}" title="${deleted ? "已标记删除，Cmd+D 恢复当前行" : "保留，Cmd+D 标记删除当前行"}">${deleted ? "删除" : "保留"}</div>
+      <div class="line-status">${lineHintsHtml(line)}</div>
     </div>`;
   }).join("")}` : `<div class="empty">没有匹配的行</div>`;
 }
@@ -2786,11 +2847,89 @@ function timelineOverlayHtml({ withHandles = false } = {}) {
 }
 
 function waveformBarsHtml() {
-  const count = 128;
-  return Array.from({ length: count }, (_, i) => {
-    const h = 12 + Math.round((Math.sin(i * 0.71) * 0.5 + 0.5) * 30) + (i % 7) * 2;
-    return `<span style="height:${Math.min(46, h)}px"></span>`;
+  if (waveformLoading) return `<div class="waveform-status">正在生成真实波形…</div>`;
+  if (waveformError) return `<div class="waveform-status">${escapeHtml(waveformError)}</div>`;
+  if (!waveformPeaks.length) return `<div class="waveform-status">展开后生成真实波形</div>`;
+  return waveformPeaks.map(peak => {
+    const h = Math.max(4, Math.round(peak * 42));
+    return `<span class="waveform-bar" style="height:${h}px"></span>`;
   }).join("");
+}
+
+function waveformBarCount() {
+  const width = $("waveform")?.clientWidth || 900;
+  return Math.max(96, Math.min(240, Math.round(width / 5)));
+}
+
+function waveformSourceMedia() {
+  return document.querySelector("[data-source-media]") || document.querySelector("[data-edited-media]");
+}
+
+function waveformMediaUrl(media) {
+  if (!media) return "";
+  return media.currentSrc || media.getAttribute("src") || "";
+}
+
+function resetWaveform() {
+  waveformPeaks = [];
+  waveformSignature = "";
+  waveformLoading = false;
+  waveformError = "";
+}
+
+async function ensureWaveformPeaks() {
+  if (!timelineExpanded || waveformLoading) return;
+  const media = waveformSourceMedia();
+  const url = waveformMediaUrl(media);
+  const count = waveformBarCount();
+  const signature = `${url}|${count}`;
+  if (!url) {
+    waveformPeaks = [];
+    waveformSignature = signature;
+    waveformError = "没有可用音频";
+    renderTimeline();
+    return;
+  }
+  if (signature === waveformSignature && (waveformPeaks.length || waveformError)) return;
+  waveformSignature = signature;
+  waveformPeaks = [];
+  waveformError = "";
+  waveformLoading = true;
+  renderTimeline();
+  try {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) throw new Error("浏览器不支持音频解码");
+    const response = await fetch(url, { cache: "force-cache" });
+    if (!response.ok) throw new Error(`读取音频失败 ${response.status}`);
+    const arrayBuffer = await response.arrayBuffer();
+    const context = new AudioContextClass();
+    const audioBuffer = await context.decodeAudioData(arrayBuffer);
+    const channelCount = Math.max(1, audioBuffer.numberOfChannels);
+    const samplesPerBar = Math.max(1, Math.floor(audioBuffer.length / count));
+    const peaks = [];
+    let maxPeak = 0;
+    for (let i = 0; i < count; i += 1) {
+      const start = i * samplesPerBar;
+      const end = Math.min(audioBuffer.length, start + samplesPerBar);
+      let peak = 0;
+      for (let c = 0; c < channelCount; c += 1) {
+        const data = audioBuffer.getChannelData(c);
+        let sum = 0;
+        for (let j = start; j < end; j += 1) sum += Math.abs(data[j] || 0);
+        peak = Math.max(peak, sum / Math.max(1, end - start));
+      }
+      peaks.push(peak);
+      maxPeak = Math.max(maxPeak, peak);
+    }
+    waveformPeaks = peaks.map(peak => Math.max(0.08, peak / Math.max(maxPeak, 0.0001)));
+    if (context.close) await context.close();
+  } catch {
+    waveformPeaks = [];
+    waveformError = "真实波形不可用";
+  } finally {
+    waveformLoading = false;
+    renderTimeline();
+  }
 }
 
 function timelineLabelsHtml() {
@@ -2810,6 +2949,7 @@ function renderTimeline() {
   $("timelineSourceTime").textContent = fmt(timelineSourceTime);
   const waveform = $("waveform");
   if (waveform) waveform.innerHTML = `${waveformBarsHtml()}${timelineOverlayHtml({ withHandles: true })}`;
+  if (timelineExpanded) ensureWaveformPeaks();
   const actions = $("inspectActions");
   const lines = deletedLinesForInterval(selectedDeleteInterval);
   actions.classList.toggle("active", Boolean(selectedDeleteInterval));
@@ -3253,6 +3393,11 @@ document.addEventListener("click", (e) => {
   if (!button) return;
   if (button.dataset.reviewFilter) {
     qaFilter = button.dataset.reviewFilter;
+    renderAll();
+    return;
+  }
+  if (button.dataset.toggleTime) {
+    expandedTimeLineId = String(expandedTimeLineId) === String(button.dataset.toggleTime) ? null : Number(button.dataset.toggleTime);
     renderAll();
     return;
   }
