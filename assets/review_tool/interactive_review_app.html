@@ -671,6 +671,8 @@ let baseRevision = null;
 let dirty = false;
 let saveConflict = null;
 let stopHandler = null;
+let stopMedia = null;
+let stopPollTimer = null;
 let editedSkipHandler = null;
 let busyMode = "";
 let lockToken = "";
@@ -1950,27 +1952,44 @@ function updateEditedPreviewInfo() {
     : "当前没有删除线，右侧预览等同原始素材";
 }
 
-function playRange(start, end, target = "edited") {
+function clearPlaybackStop() {
+  if (stopMedia && stopHandler) stopMedia.removeEventListener("timeupdate", stopHandler);
+  if (stopPollTimer) clearInterval(stopPollTimer);
+  stopHandler = null;
+  stopMedia = null;
+  stopPollTimer = null;
+}
+
+function stopPlayback(media) {
+  media.pause();
+  clearPlaybackStop();
+}
+
+function playRange(start, end, target = "source") {
   const media = document.querySelector(target === "source" ? "[data-source-media]" : "[data-edited-media]");
   if (!media) return;
-  if (stopHandler) {
-    media.removeEventListener("timeupdate", stopHandler);
-    stopHandler = null;
-  }
-  const stopAt = Number(end) + 0.25;
+  clearPlaybackStop();
+  const startAt = Number(start) || 0;
+  const endAt = Math.max(startAt + 0.05, Number(end) || startAt + 0.05);
+  const preRoll = target === "source" ? 0.06 : 0.15;
+  const postRoll = target === "source" ? 0.03 : 0.12;
+  const stopAt = endAt + postRoll;
   stopHandler = () => {
     if (target === "edited") applyEditedSkip(media);
     if (media.currentTime >= stopAt) {
-      media.pause();
-      media.removeEventListener("timeupdate", stopHandler);
-      stopHandler = null;
+      stopPlayback(media);
     }
   };
   media.currentTime = target === "edited"
-    ? Math.max(0, nextKeptTime(start) - 0.15)
-    : Math.max(0, Number(start) - 0.15);
+    ? Math.max(0, nextKeptTime(startAt) - preRoll)
+    : Math.max(0, startAt - preRoll);
+  stopMedia = media;
   media.addEventListener("timeupdate", stopHandler);
-  media.play();
+  stopPollTimer = setInterval(stopHandler, 30);
+  const playResult = media.play();
+  if (playResult?.catch) {
+    playResult.catch(() => clearPlaybackStop());
+  }
 }
 
 function handleConflict(data) {
@@ -2112,7 +2131,7 @@ document.addEventListener("keydown", (e) => {
   if (!isEditable && e.key.toLowerCase() === "p") {
     e.preventDefault();
     const line = lineById(activeLineId);
-    if (line) playRange(line.start, line.end, line.deleted ? "source" : "edited");
+    if (line) playRange(line.start, line.end, "source");
     return;
   }
   if (!isEditable && e.key.toLowerCase() === "j") {
@@ -2188,7 +2207,7 @@ document.addEventListener("click", (e) => {
   }
   if (button.dataset.playLine) {
     const line = lineById(button.dataset.playLine);
-    if (line) playRange(line.start, line.end, line.deleted ? "source" : "edited");
+    if (line) playRange(line.start, line.end, "source");
   }
   if (button.dataset.toggleDelete) toggleDelete(button.dataset.toggleDelete);
   if (button.dataset.insertAfter) insertAfter(button.dataset.insertAfter);
