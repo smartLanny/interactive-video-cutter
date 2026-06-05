@@ -120,6 +120,8 @@ fast ASR
 AI polish is a state-editing stage, not only a suggestion report. Before it writes, back up the review state as `interactive_review_state.before-ai-polish.json`. The polish pass should:
 
 - Delete repeated takes, false starts, abandoned fragments, long pauses, and obvious waste lines when confidence is high.
+- For repeated takes, prefer delete-before/keep-after when quality is close, because later takes are usually corrected. Keep earlier takes only when the later take is clearly worse.
+- Treat long ASR timestamp gaps as review hazards. Mark them with `asr-timestamp-gap` and human-review flags instead of allowing high-confidence deletion without targeted quality ASR or listening.
 - Fix clear ASR term, model, number, and unit mistakes when the audio/ASR supports the edit.
 - Improve semantic line breaks only when timing boundaries remain safe.
 - Mark uncertain lines with `needs_human`, `needs-review`, or `ai-polish-focus` instead of forcing a deletion or text change.
@@ -160,7 +162,7 @@ For video files, the workflow is:
 3. Optional targeted reruns may pass a short terminology context for dense technical ranges.
 4. `edit/takes_packed.md` gives agents a compact transcript reading view.
 5. Codex middle AI polish backs up `interactive_review_state.json`, then writes high-confidence deletes, term/number/unit fixes, and safe line cleanup directly into state.
-6. Direct EDL plus take-clustering validate the polish for missing-reference gaps, orphan tails, time overlaps, repeated-take chains, and dense metric/protected-term runs.
+6. Direct EDL plus take-clustering validate the polish for missing-reference gaps, ASR timestamp gaps, orphan tails, time overlaps, repeated-take chains, and dense metric/protected-term runs.
 7. Only AI polish focus items, EDL/clustering conflicts, and low-confidence audio questions become browser/manual review items. Line-level `semantic_review_packets.jsonl` is a residual QA surface, not the primary review queue.
 8. Structured LLM suggestions can be imported with `scripts/apply_semantic_review_suggestions.py`; by default deletes stay high-confidence only while medium-confidence text replacements and re-splits may apply.
 9. External AI APIs such as MiMo are optional audit layers for selected hard windows, not default automatic state writers.
@@ -306,7 +308,7 @@ http://<剪辑机IP>:8765
 - `edit/ai_polish_suggestions.json`
 - 更新后的 `interactive_review_state.json`
 
-高置信重复 take、废稿、长停顿可以直接加删除线；明确的术语、型号、数字和单位错误可以直接修。听不准的密集指标、长时间窗、off-reference 但可能有效的口播，标 `needs_human` / `needs-review` / `ai-polish-focus`，留到网页听审。MiMo 等外部 AI 只作为可选复审，不默认自动写回 state。
+高置信重复 take、废稿、长停顿可以直接加删除线；重复 take 质量接近时默认删前保后，因为后段通常是修正后的版本。长 ASR 词时间空窗不能当普通高置信停顿处理，要标 `asr-timestamp-gap` 并通过 targeted quality ASR 或人工听审确认。明确的术语、型号、数字和单位错误可以直接修。听不准的密集指标、长时间窗、off-reference 但可能有效的口播，标 `needs_human` / `needs-review` / `ai-polish-focus`，留到网页听审。MiMo 等外部 AI 只作为可选复审，不默认自动写回 state。
 
 单位按参考文案统一：该写 `W`、`℃`、`Hz`、`GHz`、`GB`、`Wh`、`nits` 时不要改成 `瓦`、`摄氏度` 等口语写法。
 

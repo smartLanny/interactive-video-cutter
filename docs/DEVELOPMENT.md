@@ -53,6 +53,8 @@ interactive-video-cutter/
 3. AI polish before browser review
    - Back up `<workdir>/interactive_review_state.json` to `<workdir>/interactive_review_state.before-ai-polish.json` before writing.
    - Codex middle agent is the default writer. It should directly apply high-confidence repeated-take deletes, false-start deletes, obvious term/number/unit fixes, and safe semantic cleanup to `interactive_review_state.json`.
+   - Repeated-take cleanup uses delete-before/keep-after when take quality is close. Later takes are preferred unless they are clearly incomplete, lower confidence, or semantically wrong.
+   - Long ASR word-time gaps are review hazards. Preprocessing marks them with `asr-timestamp-gap` plus human-review flags; AI polish must not treat those windows as high-confidence deletes without targeted quality ASR or listening.
    - Suggestions-only is not enough for the intended workflow; the browser should open a pre-polished state, not a raw transcript.
    - Write `<workdir>/edit/ai_polish_report.md` and `<workdir>/edit/ai_polish_suggestions.json` for audit and rollback context.
    - Mark uncertain dense metrics, off-reference but plausible narration, long time spans, low match score, or risky term/number edits with `needs_human`, `needs-review`, or `ai-polish-focus`.
@@ -75,6 +77,7 @@ interactive-video-cutter/
    - Converts ASR `words`, `segments`, or `text` into timed review lines.
    - Uses reference text to correct terms, numbers, model names, punctuation, and sentence breaks.
    - Uses reference matches to mark repeated takes for deletion and split long comma-heavy review lines.
+   - Flags long timestamp gaps between meaningful speech lines as `asr-timestamp-gap` so pause rows remain visible for focused review.
    - Keeps audio/video ASR as source of truth; reference text must not add unspoken content.
 
 7. `assets/review_tool/interactive_review_server.py`

@@ -20,6 +20,9 @@ MAX_REVIEW_LINE_CHARS = 28
 MAX_REVIEW_SOFT_PUNCT = 1
 PREFERRED_REVIEW_LINE_CHARS = 18
 DEFAULT_PAUSE_DELETE_THRESHOLD = 1.2
+ASR_TIMESTAMP_GAP_REVIEW_THRESHOLD = 12.0
+REPEATED_TAKE_SCORE_MARGIN = 0.04
+REPEATED_TAKE_COMPLETENESS_MARGIN = 0.12
 REFERENCE_HIGH_CONFIDENCE = 0.80
 REFERENCE_MID_CONFIDENCE = 0.62
 REFERENCE_MIN_RATIO = 0.36
@@ -791,13 +794,7 @@ def mark_reference_duplicate_takes(lines: list[dict[str, Any]]) -> None:
     for group in groups.values():
         if len(group) <= 1:
             continue
-        keep = max(
-            group,
-            key=lambda line: (
-                float(line.get("_referenceScore") or 0.0),
-                float(line.get("start") or 0.0),
-            ),
-        )
+        keep = choose_best_repeated_take(group)
         for line in group:
             if line is keep:
                 continue
@@ -861,11 +858,30 @@ def protected_review_flags(text: str, reference_terms: list[str]) -> list[str]:
     return flags
 
 
-def take_quality_score(line: dict[str, Any]) -> tuple[float, float, float]:
+def take_quality_score(line: dict[str, Any]) -> tuple[float, float, float, float]:
     score = float(line.get("matchScore") or line.get("_referenceScore") or 0.0)
     text_len = len(normalize_for_match(str(line.get("text") or "")))
     duration = max(0.0, float(line.get("end", 0.0)) - float(line.get("start", 0.0)))
-    return (score, min(text_len, 80) / 80.0, min(duration, 12.0) / 12.0)
+    start = float(line.get("start") or 0.0)
+    return (score, min(text_len, 80) / 80.0, min(duration, 12.0) / 12.0, start)
+
+
+def choose_best_repeated_take(group: list[dict[str, Any]]) -> dict[str, Any]:
+    """Prefer the later take when quality is close; later reads are usually corrected."""
+    best = max(group, key=take_quality_score)
+    later = max(group, key=lambda line: float(line.get("start") or 0.0))
+    if later is best:
+        return best
+
+    best_score, best_text, best_duration, _ = take_quality_score(best)
+    later_score, later_text, later_duration, _ = take_quality_score(later)
+    if (
+        later_score >= best_score - REPEATED_TAKE_SCORE_MARGIN
+        and later_text >= best_text - REPEATED_TAKE_COMPLETENESS_MARGIN
+        and later_duration >= best_duration - REPEATED_TAKE_COMPLETENESS_MARGIN
+    ):
+        return later
+    return best
 
 
 def mark_reference_group_takes(lines: list[dict[str, Any]]) -> None:
@@ -882,7 +898,7 @@ def mark_reference_group_takes(lines: list[dict[str, Any]]) -> None:
         groups.setdefault(int(ref_index), []).append(line)
 
     for group in groups.values():
-        keep = max(group, key=take_quality_score)
+        keep = choose_best_repeated_take(group)
         for line in group:
             if line is keep:
                 line["takeRole"] = "primary"
@@ -987,6 +1003,30 @@ def mark_semantic_predeletes(lines: list[dict[str, Any]]) -> None:
     mark_nearby_duplicate_fragments(lines)
 
 
+def flag_long_asr_timestamp_gaps(
+    lines: list[dict[str, Any]],
+    threshold: float = ASR_TIMESTAMP_GAP_REVIEW_THRESHOLD,
+) -> None:
+    ordered = sorted(
+        [line for line in lines if not line.get("deleted") and line.get("lineType") != "pause"],
+        key=lambda item: (float(item.get("start", 0.0)), float(item.get("end", 0.0))),
+    )
+    previous: dict[str, Any] | None = None
+    for line in ordered:
+        if previous is not None:
+            gap = float(line.get("start", 0.0)) - float(previous.get("end", previous.get("start", 0.0)))
+            prev_norm = normalize_for_match(str(previous.get("text") or ""))
+            cur_norm = normalize_for_match(str(line.get("text") or ""))
+            if gap >= threshold and len(prev_norm) >= 4 and len(cur_norm) >= 4:
+                for target in (previous, line):
+                    append_flag(target, "needs_human")
+                    append_flag(target, "needs-review")
+                    append_flag(target, "ai-polish-focus")
+                    append_flag(target, "asr-timestamp-gap")
+                    append_source(target, f"review:asr-timestamp-gap:{gap:.1f}s")
+        previous = line
+
+
 def add_pause_lines(lines: list[dict[str, Any]], threshold: float = DEFAULT_PAUSE_DELETE_THRESHOLD) -> list[dict[str, Any]]:
     if threshold <= 0:
         return lines
@@ -999,6 +1039,16 @@ def add_pause_lines(lines: list[dict[str, Any]], threshold: float = DEFAULT_PAUS
             start = float(line.get("start", 0))
             gap = start - prev_end
             if gap >= threshold:
+                qa_flags = ["pause"]
+                source = "suggested-delete:pause"
+                previous_flags = set(previous.get("qaFlags") or [])
+                line_flags = set(line.get("qaFlags") or [])
+                if (
+                    gap >= ASR_TIMESTAMP_GAP_REVIEW_THRESHOLD
+                    and ("asr-timestamp-gap" in previous_flags or "asr-timestamp-gap" in line_flags)
+                ):
+                    qa_flags.extend(["needs_human", "needs-review", "ai-polish-focus", "asr-timestamp-gap"])
+                    source = f"{source} review:asr-timestamp-gap:{gap:.1f}s"
                 result.append({
                     "id": 0,
                     "index": 0,
@@ -1006,11 +1056,11 @@ def add_pause_lines(lines: list[dict[str, Any]], threshold: float = DEFAULT_PAUS
                     "end": round(start, 3),
                     "text": f"停顿/气口 {gap:.1f} 秒",
                     "deleted": True,
-                    "source": "suggested-delete:pause",
+                    "source": source,
                     "lineType": "pause",
                     "takeId": f"pause-{prev_end:.3f}-{start:.3f}",
                     "takeRole": "pause",
-                    "qaFlags": ["pause"],
+                    "qaFlags": qa_flags,
                 })
         result.append(line)
         previous = line
@@ -1435,6 +1485,7 @@ def preprocess_transcript_payload(
     mark_conservative_deletes(processed)
     mark_reference_group_takes(processed)
     mark_semantic_predeletes(processed)
+    flag_long_asr_timestamp_gaps(processed)
     for line in processed:
         if line.get("_referenceIndex") is None and is_preroll_test_line(line):
             line["deleted"] = True
@@ -1512,6 +1563,7 @@ def preprocess_payload(
     if grouped_mode:
         mark_reference_group_takes(processed)
         mark_semantic_predeletes(processed)
+        flag_long_asr_timestamp_gaps(processed)
     else:
         mark_reference_duplicate_takes(processed)
     with_pauses = add_pause_lines(processed, pause_threshold if grouped_mode else 0.0)

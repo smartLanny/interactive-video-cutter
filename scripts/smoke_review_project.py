@@ -135,6 +135,42 @@ def assert_preprocess_regressions(root: Path) -> None:
     if len(parts) < 3 or any("，" in part or "。" in part for part in parts):
         raise RuntimeError(f"review split regression: {parts}")
 
+    repeated = [
+        {
+            "id": 101,
+            "start": 10.0,
+            "end": 12.0,
+            "text": "这是一段重复口播的完整内容",
+            "_referenceIndex": 1,
+            "_referenceScore": 0.90,
+            "matchScore": 0.90,
+        },
+        {
+            "id": 102,
+            "start": 18.0,
+            "end": 20.0,
+            "text": "这是一段重复口播的完整内容",
+            "_referenceIndex": 1,
+            "_referenceScore": 0.88,
+            "matchScore": 0.88,
+        },
+    ]
+    module.mark_reference_group_takes(repeated)
+    if not repeated[0].get("deleted") or repeated[1].get("deleted") or repeated[1].get("takeRole") != "primary":
+        raise RuntimeError(f"repeated take should prefer later close-quality take: {repeated}")
+
+    gap_lines = [
+        {"id": 201, "start": 0.0, "end": 2.0, "text": "前面一段有效口播", "deleted": False},
+        {"id": 202, "start": 24.5, "end": 27.0, "text": "后面一段有效口播", "deleted": False},
+    ]
+    module.flag_long_asr_timestamp_gaps(gap_lines)
+    gap_with_pause = module.add_pause_lines(gap_lines, 1.2)
+    pause = next((line for line in gap_with_pause if line.get("lineType") == "pause"), None)
+    if not pause or "asr-timestamp-gap" not in pause.get("qaFlags", []):
+        raise RuntimeError(f"long ASR timestamp gap was not flagged on pause line: {gap_with_pause}")
+    if any("asr-timestamp-gap" not in line.get("qaFlags", []) for line in gap_lines):
+        raise RuntimeError(f"long ASR timestamp gap was not flagged on neighbor lines: {gap_lines}")
+
     reference_units = module.split_reference_units(
         "为了让你知道这台电视有多好，我们找来了索尼30W彩监，旗舰WOLED电视，以及传统QD-miniLED，"
         "用价值百万的仪器实测，不管你是持币待购，还是说就看个热闹，这期视频都干货拉满，包你看爽。\n"

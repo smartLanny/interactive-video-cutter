@@ -30,6 +30,8 @@ fast ASR
 The AI polish stage should create a browser-ready review state:
 
 - Delete repeated takes, false starts, abandoned fragments, long pauses, and obvious waste lines.
+- For repeated takes, prefer delete-before/keep-after when quality is close, because later reads are usually corrected.
+- Treat long ASR timestamp gaps between meaningful speech lines as unsafe review windows. Mark `asr-timestamp-gap` plus human-review flags; do not high-confidence delete those windows without targeted quality ASR or listening.
 - Fix clear ASR term and number mistakes.
 - Improve Chinese semantic line breaks when timing boundaries are safe.
 - Keep uncertain lines and mark them with `needs_human`, `needs-review`, or `ai-polish-focus`.
