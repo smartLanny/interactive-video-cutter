@@ -453,23 +453,23 @@
   }
   .line-row.review-focus,
   .take-row.review-focus {
-    box-shadow: inset 3px 0 0 #c25b4d;
+    box-shadow: inset 2px 0 0 rgba(137, 82, 65, 0.70);
   }
   .line-row.review-asr:not(.review-focus),
   .take-row.review-asr:not(.review-focus) {
-    box-shadow: inset 3px 0 0 #d78b18;
+    box-shadow: inset 2px 0 0 rgba(153, 110, 44, 0.50);
   }
   .line-row.review-metric:not(.review-focus):not(.review-asr),
   .take-row.review-metric:not(.review-focus):not(.review-asr) {
-    box-shadow: inset 3px 0 0 #3b79bd;
+    box-shadow: inset 2px 0 0 rgba(69, 107, 144, 0.42);
   }
   .line-row.review-term:not(.review-focus):not(.review-asr):not(.review-metric),
   .take-row.review-term:not(.review-focus):not(.review-asr):not(.review-metric) {
-    box-shadow: inset 3px 0 0 #8b5aa5;
+    box-shadow: inset 2px 0 0 rgba(111, 89, 128, 0.40);
   }
   .line-row.review-delete-suggestion:not(.review-focus):not(.review-asr):not(.review-metric):not(.review-term),
   .take-row.review-delete-suggestion:not(.review-focus):not(.review-asr):not(.review-metric):not(.review-term) {
-    box-shadow: inset 3px 0 0 #a5382e;
+    box-shadow: inset 2px 0 0 rgba(119, 65, 57, 0.42);
   }
   .line-row.pause .line-text {
     color: var(--muted);
@@ -546,6 +546,33 @@
   .candidate-meta {
     color: var(--muted);
     font-size: 12px;
+  }
+  .candidate-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    color: var(--muted);
+    font-size: 12px;
+  }
+  .candidate-status {
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    min-height: 22px;
+    border-radius: 999px;
+    padding: 2px 7px;
+    background: #f3eadc;
+    color: #625746;
+    font-size: 12px;
+    font-weight: 650;
+  }
+  .candidate-status.adopted {
+    background: #edf7ed;
+    color: #2f6b3f;
+  }
+  .candidate-status.deleted {
+    background: #f4eee9;
+    color: #7a3030;
   }
   .qa-flags {
     display: flex;
@@ -631,6 +658,7 @@
   .take-row:last-child { border-bottom: 0; }
   .take-row.deleted {
     background: var(--panel-soft);
+    color: var(--muted);
   }
   .take-row.active {
     outline: 2px solid var(--accent);
@@ -745,22 +773,34 @@
   .article-segment.review-delete-suggestion::before {
     content: "";
     display: inline-block;
-    width: 7px;
-    height: 7px;
+    width: 5px;
+    height: 5px;
     margin: 0 4px 2px 1px;
     border-radius: 50%;
-    background: #d78b18;
+    background: rgba(153, 110, 44, 0.45);
   }
-  .article-segment.review-focus::before { background: #c25b4d; }
-  .article-segment.review-metric::before { background: #3b79bd; }
-  .article-segment.review-term::before { background: #8b5aa5; }
-  .article-segment.review-delete-suggestion::before { background: #a5382e; }
+  .article-segment.review-focus::before { background: rgba(137, 82, 65, 0.65); }
+  .article-segment.review-metric::before { background: rgba(69, 107, 144, 0.42); }
+  .article-segment.review-term::before { background: rgba(111, 89, 128, 0.40); }
+  .article-segment.review-delete-suggestion::before { background: rgba(119, 65, 57, 0.42); }
   .continuous-text {
     min-height: 0;
     padding: 0;
     font-size: inherit;
     line-height: inherit;
     border-radius: 4px;
+  }
+  .final-paper {
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 28px 8px 44px;
+    font-family: "Songti SC", "STSong", "SimSun", serif;
+    font-size: 20px;
+    line-height: 2.12;
+  }
+  .final-segment {
+    display: inline;
+    padding: 0;
   }
   .duration-pill {
     display: inline-flex;
@@ -958,10 +998,10 @@
     background: rgba(164, 56, 46, 0.78);
   }
   .timeline-risk-mark {
-    width: 4px;
-    min-width: 4px;
+    width: 2px;
+    min-width: 2px;
     border-radius: 999px;
-    background: #d78b18;
+    background: rgba(111, 106, 97, 0.40);
   }
   .timeline-selection {
     min-width: 3px;
@@ -1102,6 +1142,14 @@
   .timeline-controls input[type="range"] {
     width: 82px;
     accent-color: var(--accent);
+  }
+  .timeline-controls input.timeline-pan {
+    width: 128px;
+  }
+  .timeline-view-label {
+    min-width: 132px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
   }
   .timeline-controls select {
     min-width: 76px;
@@ -1295,13 +1343,13 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h5"/></svg>
       <span>文稿</span>
     </button>
-    <button id="candidateModeBtn" type="button" data-nav-mode="candidates" title="候选">
+    <button id="candidateModeBtn" type="button" data-nav-mode="candidates" title="文案候选">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/></svg>
-      <span>候选</span>
+      <span>文案候选</span>
     </button>
-    <button id="qaNavBtn" type="button" data-nav-mode="qa" title="质检">
+    <button id="qaNavBtn" type="button" data-nav-mode="qa" title="待审重点">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M20 13c0 5-3.5 7.5-8 9-4.5-1.5-8-4-8-9V5l8-3 8 3Z"/><path d="m9 12 2 2 4-5"/></svg>
-      <span>质检</span>
+      <span>待审重点</span>
     </button>
     <button id="statsNavBtn" type="button" data-nav-mode="stats" title="统计">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 19V5"/><path d="M4 19h16"/><path d="M8 17V9M13 17V5M18 17v-6"/></svg>
@@ -1323,8 +1371,9 @@
           </div>
         </div>
         <div class="view-toggle" aria-label="审阅模式">
-          <button id="lineModeBtn" type="button" class="active">分行</button>
-          <button id="continuousModeBtn" type="button">连续</button>
+          <button id="lineModeBtn" type="button" class="active">字幕</button>
+          <button id="continuousModeBtn" type="button">文案</button>
+          <button id="finalModeBtn" type="button">完成版</button>
         </div>
         <section class="metrics" id="metrics"></section>
         <div class="filter-info" id="filterInfo"></div>
@@ -1377,7 +1426,6 @@
         <div id="waveform" class="waveform"></div>
       </div>
       <div class="timeline-controls">
-        <label>缩放 <input id="timelineZoom" type="range" min="1" max="8" step="1" value="1"></label>
         <label>速度
           <select id="timelineSpeed">
             <option value="0.75">0.75x</option>
@@ -1387,7 +1435,10 @@
           </select>
         </label>
         <label>音量 <input id="timelineVolume" type="range" min="0" max="1" step="0.01" value="1"></label>
-        <label><input id="timelineSnap" type="checkbox" checked> snap</label>
+        <label>缩放 <input id="timelineZoom" type="range" min="1" max="16" step="0.1" value="1"></label>
+        <label>位置 <input id="timelinePan" class="timeline-pan" type="range" min="0" max="1" step="0.001" value="0"></label>
+        <span id="timelineViewLabel" class="timeline-view-label">全片</span>
+        <label><input id="timelineSnap" type="checkbox" checked> 吸附</label>
       </div>
     </div>
     <div id="inspectActions" class="inspect-actions">
@@ -1401,7 +1452,6 @@
     </div>
   </div>
   <div class="shortcut-strip" aria-label="快捷键说明">
-    <span><kbd>空格</kbd>播放/暂停</span>
     <span><kbd>⌘P</kbd>听当前句</span>
     <span><kbd>J/K</kbd>上/下一句</span>
     <span><kbd>↑/↓</kbd>按句移动</span>
@@ -1462,7 +1512,10 @@ let lastTextMode = "lines";
 let timelineExpanded = false;
 let selectedDeleteInterval = null;
 let timelineSourceTime = 0;
+let timelineRenderFrame = null;
 let expandedTimeLineId = null;
+let timelineZoom = 1;
+let timelineViewStart = 0;
 let waveformPeaks = [];
 let waveformSignature = "";
 let waveformLoading = false;
@@ -1485,6 +1538,7 @@ const QA_FLAG_DEFS = [
   { keys: ["semantic-llm-review"], label: "语义复核", css: "flag-review", category: "focus", filter: "focus", priority: true, search: ["语义", "复核", "LLM复核", "值得再看"] },
   { keys: ["llm-suggestion-medium"], label: "中等建议", css: "flag-polish", category: "focus", filter: "focus", priority: true, search: ["中等建议", "建议再看", "LLM建议"] },
   { keys: ["llm-suggestion-pending"], label: "建议待定", css: "flag-neutral", category: "focus", filter: "focus", priority: true, search: ["待定", "待确认", "建议再看"] },
+  { keys: ["keep-after-review", "llm-delete-guard"], label: "删前保后待审", css: "flag-review", category: "focus", filter: "focus", priority: true, search: ["删前保后", "复念", "后版", "待审"] },
   { keys: ["needs_human", "needs-human"], label: "人工复核", css: "flag-human", category: "focus", filter: "focus", priority: true, search: ["重点", "待审重点", "人审", "人工确认"] },
   { keys: ["needs-review", "needs_review"], label: "待审重点", css: "flag-review", category: "focus", filter: "focus", priority: true, search: ["复核", "重点审查", "人工听"] },
   { keys: ["ai-polish-focus"], label: "AI打磨重点", css: "flag-polish", category: "focus", filter: "focus", priority: true, search: ["AI polish", "重点打磨", "改稿重点"] },
@@ -2067,6 +2121,8 @@ async function loadData(projectId = currentProjectId, options = {}) {
   renumberLines();
   activeLineId = state.scriptLines[0]?.id ?? null;
   timelineSourceTime = activeLineId ? parseNum(lineById(activeLineId)?.start) : 0;
+  timelineZoom = 1;
+  timelineViewStart = 0;
   renderAll();
   renderMediaTabs();
   setStatus(`已载入：${meta.statePath}`);
@@ -2091,8 +2147,8 @@ function deletedDuration() {
 function renderMetrics() {
   const deletedLines = state.scriptLines.filter(line => line.deleted).length;
   const removed = deletedDuration();
-  const visibleCount = visibleLines().length;
-  const filterActive = Boolean($("search")?.value.trim()) || showDeletedOnly || qaFilter !== "all" || navMode === "qa";
+  const visibleCount = reviewMode === "final" ? finalLines().length : visibleLines().length;
+  const filterActive = Boolean($("search")?.value.trim()) || showDeletedOnly || qaFilter !== "all" || navMode === "qa" || reviewMode === "final";
   const reviewCounts = reviewFilterCounts();
   $("metrics").innerHTML = [
     `<div class="metric"><span>全文</span>${state.scriptLines.length}</div>`,
@@ -2165,14 +2221,8 @@ function attachSourceTimelineEvents() {
   const media = document.querySelector("[data-source-media]");
   if (!media) return;
   applyTimelineMediaSettings(media);
-  media.addEventListener("timeupdate", () => {
-    timelineSourceTime = Number(media.currentTime) || 0;
-    renderTimeline();
-  });
-  media.addEventListener("seeking", () => {
-    timelineSourceTime = Number(media.currentTime) || 0;
-    renderTimeline();
-  });
+  media.addEventListener("timeupdate", () => syncTimelineFromMedia(media));
+  media.addEventListener("seeking", () => syncTimelineFromMedia(media));
 }
 
 function renderExportResults(result = null) {
@@ -2265,6 +2315,7 @@ function renderModeControls() {
   $("statsNavBtn").classList.toggle("active", reviewMode === "stats");
   $("lineModeBtn").classList.toggle("active", reviewMode === "lines");
   $("continuousModeBtn").classList.toggle("active", reviewMode === "continuous");
+  $("finalModeBtn").classList.toggle("active", reviewMode === "final");
   $("showDeleted").classList.toggle("active", showDeletedOnly);
   renderReviewFilters();
 }
@@ -2305,16 +2356,22 @@ function renderCandidateGroups() {
       const refNumber = Number(group.referenceIndex) + 1;
       const takes = group.takes || [];
       const multiTake = takes.length > 1;
-      const groupLabel = multiTake ? `${takes.length} 个候选` : "已匹配";
+      const adoptedCount = takes.filter(take => !takeDeleted(take)).length;
+      const deletedCount = takes.length - adoptedCount;
       return `<section class="candidate-group">
         <div class="candidate-head">
-          <div class="candidate-meta">参考句 #${refNumber} · ${groupLabel}</div>
+          <div class="candidate-meta">参考句 #${refNumber}</div>
           <div class="reference-text">${escapeHtml(group.referenceText || "")}</div>
+          <div class="candidate-summary">
+            <span>已采用 ${adoptedCount}</span>
+            <span>${multiTake ? `备选/已删除候选 ${deletedCount}` : (deletedCount ? "当前候选已删除" : "单候选已采用")}</span>
+          </div>
         </div>
         ${takes.map(take => {
           const lines = linesForTake(take);
           const firstLine = lines[0] || null;
           const deleted = takeDeleted(take);
+          const takeStatus = deleted ? "备选 / 已删除候选" : "已采用";
           const active = firstLine && String(firstLine.id) === String(activeLineId);
           const flags = reviewFlagsHtml(take, lines);
           const start = firstLine ? Math.min(...lines.map(line => parseNum(line.start))) : parseNum(take.start);
@@ -2324,9 +2381,10 @@ function renderCandidateGroups() {
             <div class="line-meta">
               <div><span class="line-number">#${escapeHtml(firstLine?.index || take.index || take.lineId || "")}</span></div>
               <div class="time">源 ${fmt(start)}-${fmt(end)}<br>${deleted ? "成片 删除" : `成片 ${fmt(sourceToOutputTime(start))}`}</div>
-              <div class="candidate-meta">score ${(Number(take.matchScore) || 0).toFixed(2)}</div>
+              <div class="candidate-meta">匹配度 ${(Number(take.matchScore) || 0).toFixed(2)}</div>
             </div>
             <div>
+              <div class="candidate-status ${deleted ? "deleted" : "adopted"}">${takeStatus}</div>
               <div class="take-text">${escapeHtml(takeText(take))}</div>
               ${flags}
             </div>
@@ -2392,6 +2450,26 @@ function renderContinuous() {
     : `<div class="empty">没有匹配的片段</div>`;
 }
 
+function finalLines() {
+  const q = $("search").value.trim().toLowerCase();
+  return state.scriptLines.filter(line => {
+    if (line.deleted) return false;
+    return !q || reviewItemSearchText(line).includes(q);
+  });
+}
+
+function renderFinalView() {
+  const rows = finalLines();
+  const content = rows.map(line => {
+    const active = String(line.id) === String(activeLineId);
+    const rowClass = ["final-segment", active ? "active" : ""].filter(Boolean).join(" ");
+    return `<span class="${rowClass}" data-line-id="${line.id}">${escapeHtml(line.text)}</span>`;
+  }).join(" ");
+  $("scriptRows").innerHTML = content
+    ? `<article class="final-paper" aria-label="完成版文案">${content}</article>`
+    : `<div class="empty">当前删除设置下没有保留文案</div>`;
+}
+
 function renderStatsView() {
   const reviewCounts = reviewFilterCounts();
   const removed = deletedDuration();
@@ -2414,6 +2492,7 @@ function renderAll() {
   renderMetrics();
   renderModeControls();
   if (reviewMode === "candidates") renderCandidateGroups();
+  else if (reviewMode === "final") renderFinalView();
   else if (reviewMode === "continuous") renderContinuous();
   else if (reviewMode === "stats") renderStatsView();
   else renderRows();
@@ -2854,8 +2933,58 @@ function sourceToOutputTime(value) {
   return Math.max(0, time - removed);
 }
 
+function timelineViewDuration() {
+  return Math.max(0.1, projectDuration() / Math.max(1, Number(timelineZoom) || 1));
+}
+
+function timelineViewEnd() {
+  return Math.min(projectDuration(), timelineViewStart + timelineViewDuration());
+}
+
+function maxTimelineViewStart() {
+  return Math.max(0, projectDuration() - timelineViewDuration());
+}
+
+function clampTimelineViewStart(value) {
+  return Math.max(0, Math.min(maxTimelineViewStart(), Number(value) || 0));
+}
+
+function normalizeTimelineView() {
+  timelineZoom = Math.max(1, Math.min(16, Number(timelineZoom) || 1));
+  timelineViewStart = timelineZoom <= 1 ? 0 : clampTimelineViewStart(timelineViewStart);
+}
+
+function centerTimelineView(time) {
+  normalizeTimelineView();
+  if (timelineZoom <= 1) return;
+  timelineViewStart = clampTimelineViewStart((Number(time) || 0) - timelineViewDuration() / 2);
+}
+
+function ensureTimelineTimeVisible(time) {
+  normalizeTimelineView();
+  if (timelineZoom <= 1) return;
+  const value = Number(time) || 0;
+  const start = timelineViewStart;
+  const end = timelineViewEnd();
+  if (value < start || value > end) centerTimelineView(value);
+}
+
 function percentForTime(value) {
-  return Math.max(0, Math.min(100, (Number(value) || 0) / projectDuration() * 100));
+  normalizeTimelineView();
+  const duration = timelineViewDuration();
+  return Math.max(0, Math.min(100, ((Number(value) || 0) - timelineViewStart) / duration * 100));
+}
+
+function visibleIntervalPercent(start, end) {
+  normalizeTimelineView();
+  const clippedStart = Math.max(Number(start) || 0, timelineViewStart);
+  const clippedEnd = Math.min(Number(end) || 0, timelineViewEnd());
+  if (clippedEnd <= clippedStart) return null;
+  const left = percentForTime(clippedStart);
+  return {
+    left,
+    width: Math.max(0.25, percentForTime(clippedEnd) - left),
+  };
 }
 
 function lineAtTime(time) {
@@ -2892,23 +3021,26 @@ function deletedLinesForInterval(interval) {
 function timelineOverlayHtml({ withHandles = false } = {}) {
   const intervalKey = selectedDeleteInterval ? `${selectedDeleteInterval.start.toFixed(3)}-${selectedDeleteInterval.end.toFixed(3)}` : "";
   const deletes = deletedIntervals().map(item => {
-    const left = percentForTime(item.start);
-    const width = Math.max(0.25, percentForTime(item.end) - left);
+    const visible = visibleIntervalPercent(item.start, item.end);
+    if (!visible) return "";
     const key = `${item.start.toFixed(3)}-${item.end.toFixed(3)}`;
     const inspect = key === intervalKey ? " inspect" : "";
-    return `<span class="timeline-delete-block${inspect}" data-delete-start="${item.start}" data-delete-end="${item.end}" style="left:${left}%;width:${width}%"></span>`;
+    return `<span class="timeline-delete-block${inspect}" data-delete-start="${item.start}" data-delete-end="${item.end}" style="left:${visible.left}%;width:${visible.width}%"></span>`;
   }).join("");
   const risks = state.scriptLines.filter(line => reviewItemFlags(line).length).map(line => {
-    const left = percentForTime(parseNum(line.start));
+    const start = parseNum(line.start);
+    if (start < timelineViewStart || start > timelineViewEnd()) return "";
+    const left = percentForTime(start);
     return `<span class="timeline-risk-mark" style="left:${left}%"></span>`;
   }).join("");
   const range = selectedDeleteInterval || activeLineRange();
   const selection = range ? (() => {
-    const left = percentForTime(range.start);
-    const right = percentForTime(range.end);
-    const width = Math.max(0.3, right - left);
+    const visible = visibleIntervalPercent(range.start, range.end);
+    if (!visible) return "";
+    const left = percentForTime(Math.max(range.start, timelineViewStart));
+    const right = percentForTime(Math.min(range.end, timelineViewEnd()));
     const handles = withHandles ? `<span class="range-handle start" style="left:${left}%"></span><span class="range-handle end" style="left:${right}%"></span>` : "";
-    return `<span class="timeline-selection" style="left:${left}%;width:${width}%"></span>${handles}`;
+    return `<span class="timeline-selection" style="left:${visible.left}%;width:${Math.max(0.3, visible.width)}%"></span>${handles}`;
   })() : "";
   const playhead = `<span class="timeline-playhead" style="left:${percentForTime(timelineSourceTime)}%"></span>`;
   return `${deletes}${risks}${selection}${playhead}`;
@@ -2918,14 +3050,19 @@ function waveformBarsHtml() {
   if (waveformLoading) return `<div class="waveform-status">正在生成真实波形…</div>`;
   if (waveformError) return `<div class="waveform-status">${escapeHtml(waveformError)}</div>`;
   if (!waveformPeaks.length) return `<div class="waveform-status">展开后生成真实波形</div>`;
-  const count = waveformPeaks.length;
-  const rangePath = waveformPeaks.map((bucket, i) => {
+  normalizeTimelineView();
+  const duration = Math.max(0.1, projectDuration());
+  const first = Math.max(0, Math.floor(timelineViewStart / duration * waveformPeaks.length));
+  const last = Math.min(waveformPeaks.length, Math.ceil(timelineViewEnd() / duration * waveformPeaks.length));
+  const visiblePeaks = waveformPeaks.slice(first, Math.max(first + 2, last));
+  const count = visiblePeaks.length;
+  const rangePath = visiblePeaks.map((bucket, i) => {
     const x = count <= 1 ? 0 : (i / (count - 1)) * 100;
     const top = 50 - Math.max(1.5, bucket.max * 43);
     const bottom = 50 - Math.min(-1.5, bucket.min * 43);
     return `M ${x.toFixed(3)} ${top.toFixed(3)} L ${x.toFixed(3)} ${bottom.toFixed(3)}`;
   }).join(" ");
-  const tracePath = waveformPeaks.map((bucket, i) => {
+  const tracePath = visiblePeaks.map((bucket, i) => {
     const x = count <= 1 ? 0 : (i / (count - 1)) * 100;
     const y = 50 - bucket.trace * 39;
     return `${i === 0 ? "M" : "L"} ${x.toFixed(3)} ${y.toFixed(3)}`;
@@ -2939,7 +3076,7 @@ function waveformBarsHtml() {
 
 function waveformBarCount() {
   const width = $("waveform")?.clientWidth || 900;
-  return Math.max(240, Math.min(920, Math.round(width / 2)));
+  return Math.max(240, Math.min(2400, Math.round(width / 2 * Math.max(1, timelineZoom))));
 }
 
 function waveformSourceMedia() {
@@ -2956,6 +3093,23 @@ function resetWaveform() {
   waveformSignature = "";
   waveformLoading = false;
   waveformError = "";
+}
+
+function normalizeWaveformPeaks(peaks) {
+  return (peaks || []).map(bucket => ({
+    min: Math.max(-1, Math.min(1, Number(bucket.min) || 0)),
+    max: Math.max(-1, Math.min(1, Number(bucket.max) || 0)),
+    trace: Math.max(-1, Math.min(1, Number(bucket.trace) || 0)),
+  }));
+}
+
+async function fetchServerWaveformPeaks(count) {
+  if (!currentProjectId) return [];
+  const res = await fetch(`${apiPath("/api/waveform")}&bins=${encodeURIComponent(count)}`, { cache: "force-cache" });
+  if (!res.ok) return [];
+  const data = await res.json();
+  if (!data.ok || !Array.isArray(data.peaks)) return [];
+  return normalizeWaveformPeaks(data.peaks);
 }
 
 async function ensureWaveformPeaks() {
@@ -2978,6 +3132,16 @@ async function ensureWaveformPeaks() {
   waveformLoading = true;
   renderTimeline();
   try {
+    let serverPeaks = [];
+    try {
+      serverPeaks = await fetchServerWaveformPeaks(count);
+    } catch {
+      serverPeaks = [];
+    }
+    if (serverPeaks.length) {
+      waveformPeaks = serverPeaks;
+      return;
+    }
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
     if (!AudioContextClass) throw new Error("浏览器不支持音频解码");
     const response = await fetch(url, { cache: "force-cache" });
@@ -3029,14 +3193,34 @@ async function ensureWaveformPeaks() {
 }
 
 function timelineLabelsHtml() {
-  const duration = projectDuration();
-  const points = [0, 0.2, 0.4, 0.6, 0.8, 1].map(ratio => fmt(duration * ratio));
-  return points.map((label, index) => `<span>${index === points.length - 1 ? fmt(duration) : label}</span>`).join("");
+  normalizeTimelineView();
+  const start = timelineViewStart;
+  const span = timelineViewDuration();
+  return [0, 0.2, 0.4, 0.6, 0.8, 1]
+    .map(ratio => `<span>${fmt(start + span * ratio)}</span>`)
+    .join("");
+}
+
+function scheduleTimelineRender() {
+  if (timelineRenderFrame) return;
+  timelineRenderFrame = requestAnimationFrame(() => {
+    timelineRenderFrame = null;
+    renderTimeline();
+  });
+}
+
+function syncTimelineFromMedia(media, { skipDeleted = false } = {}) {
+  if (!media) return;
+  if (skipDeleted) applyEditedSkip(media);
+  timelineSourceTime = Number(media.currentTime) || 0;
+  ensureTimelineTimeVisible(timelineSourceTime);
+  scheduleTimelineRender();
 }
 
 function renderTimeline() {
   const track = $("timelineTrack");
   if (!track) return;
+  normalizeTimelineView();
   document.body.classList.toggle("timeline-expanded", timelineExpanded);
   $("timelineExpandBtn").textContent = timelineExpanded ? "收起 ⌘B" : "展开 ⌘B";
   const labels = timelineLabelsHtml();
@@ -3046,6 +3230,20 @@ function renderTimeline() {
   track.innerHTML = timelineOverlayHtml();
   $("timelineOutputTime").textContent = fmt(sourceToOutputTime(timelineSourceTime));
   $("timelineSourceTime").textContent = fmt(timelineSourceTime);
+  const zoomInput = $("timelineZoom");
+  if (zoomInput && Number(zoomInput.value) !== Number(timelineZoom)) zoomInput.value = String(timelineZoom);
+  const panInput = $("timelinePan");
+  if (panInput) {
+    const maxStart = maxTimelineViewStart();
+    panInput.value = maxStart > 0 ? String(timelineViewStart / maxStart) : "0";
+    panInput.disabled = timelineZoom <= 1;
+  }
+  const viewLabel = $("timelineViewLabel");
+  if (viewLabel) {
+    viewLabel.textContent = timelineZoom <= 1
+      ? "全片"
+      : `${fmt(timelineViewStart)}-${fmt(timelineViewEnd())}`;
+  }
   const waveform = $("waveform");
   if (waveform) waveform.innerHTML = `${waveformBarsHtml()}${timelineOverlayHtml({ withHandles: true })}`;
   if (timelineExpanded) ensureWaveformPeaks();
@@ -3067,6 +3265,7 @@ function seekMediaTo(time, target = "source") {
 function seekToLine(line) {
   if (!line) return;
   timelineSourceTime = parseNum(line.start);
+  ensureTimelineTimeVisible(timelineSourceTime);
   seekMediaTo(timelineSourceTime, "source");
   renderTimeline();
 }
@@ -3101,7 +3300,7 @@ function selectTimelineTime(time, fromDeletedBlock = false) {
 function timeFromTimelineEvent(e) {
   const rect = e.currentTarget.getBoundingClientRect();
   const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / Math.max(1, rect.width)));
-  return ratio * projectDuration();
+  return timelineViewStart + ratio * timelineViewDuration();
 }
 
 function handleTimelineClick(e) {
@@ -3111,6 +3310,23 @@ function handleTimelineClick(e) {
 
 function toggleTimelineExpanded() {
   timelineExpanded = !timelineExpanded;
+  if (timelineExpanded) ensureTimelineTimeVisible(timelineSourceTime);
+  renderTimeline();
+}
+
+function setTimelineZoom(value) {
+  const center = timelineViewStart + timelineViewDuration() / 2;
+  timelineZoom = Math.max(1, Math.min(16, Number(value) || 1));
+  timelineViewStart = timelineZoom <= 1 ? 0 : clampTimelineViewStart(center - timelineViewDuration() / 2);
+  ensureTimelineTimeVisible(timelineSourceTime);
+  resetWaveform();
+  renderTimeline();
+}
+
+function setTimelinePan(value) {
+  normalizeTimelineView();
+  const maxStart = maxTimelineViewStart();
+  timelineViewStart = maxStart > 0 ? clampTimelineViewStart(maxStart * Math.max(0, Math.min(1, Number(value) || 0))) : 0;
   renderTimeline();
 }
 
@@ -3204,15 +3420,13 @@ function attachEditedSkipPreview() {
   clearEditedSkipPreview();
   applyTimelineMediaSettings(media);
   editedSkipHandler = () => {
-    applyEditedSkip(media);
-    timelineSourceTime = Number(media.currentTime) || 0;
-    renderTimeline();
+    syncTimelineFromMedia(media, { skipDeleted: true });
   };
   editedSkipMedia = media;
   media.addEventListener("timeupdate", editedSkipHandler);
   media.addEventListener("seeking", editedSkipHandler);
   editedSkipPollTimer = setInterval(() => {
-    if (!media.paused) applyEditedSkip(media);
+    if (!media.paused) syncTimelineFromMedia(media, { skipDeleted: true });
   }, 20);
   updateEditedPreviewInfo();
 }
@@ -3248,7 +3462,7 @@ function playRange(start, end, target = "source") {
   const postRoll = target === "source" ? 0 : 0.12;
   const stopAt = endAt + postRoll;
   stopHandler = () => {
-    if (target === "edited") applyEditedSkip(media);
+    syncTimelineFromMedia(media, { skipDeleted: target === "edited" });
     if (media.currentTime >= stopAt) {
       stopPlayback(media);
     }
@@ -3414,11 +3628,6 @@ document.addEventListener("keydown", (e) => {
     if (activeLineId) mergeNext(activeLineId);
     return;
   }
-  if (!isEditable && (e.key === " " || e.key === "Spacebar")) {
-    e.preventDefault();
-    toggleTimelinePlayback();
-    return;
-  }
   if (!isEditable && e.key === "/") {
     e.preventDefault();
     $("search").focus();
@@ -3569,6 +3778,13 @@ $("continuousModeBtn").addEventListener("click", () => {
   if (navMode !== "qa") qaFilter = "all";
   renderAll();
 });
+$("finalModeBtn").addEventListener("click", () => {
+  navMode = "script";
+  reviewMode = "final";
+  qaFilter = "all";
+  showDeletedOnly = false;
+  renderAll();
+});
 $("scriptNavBtn").addEventListener("click", () => {
   navMode = "script";
   qaFilter = "all";
@@ -3631,6 +3847,8 @@ $("timelineVolume").addEventListener("input", () => {
   applyTimelineMediaSettings(document.querySelector("[data-source-media]"));
   applyTimelineMediaSettings(document.querySelector("[data-edited-media]"));
 });
+$("timelineZoom").addEventListener("input", (e) => setTimelineZoom(e.target.value));
+$("timelinePan").addEventListener("input", (e) => setTimelinePan(e.target.value));
 
 if (location.protocol === "file:") {
   setStatus("当前是 file:// 静态页，请打开 http://127.0.0.1:8765；静态页不能可靠保存、导出或读取最新稿。", "danger-text");

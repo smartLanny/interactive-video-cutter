@@ -15,14 +15,15 @@ Visual direction: paper manuscript editor. Text is the main object; tools stay q
 
 ## Main Views
 
-- `分行`: default view, one sentence per row, text first, time metadata subdued.
-- `连续`: article-like reading view, deleted content shown inline with red-brown strikethrough, light background, and duration capsules.
+- `字幕`: default view, one sentence per row, text first, time metadata subdued.
+- `文案`: article-like reading view, deleted content shown inline with red-brown strikethrough, light background, and duration capsules.
+- `完成版`: read-only kept-script view using the current deletion settings without changing state.
 
 The left navigation remains light:
 
 - `文稿`
 - `候选`
-- `质检`
+- `待审`
 - `统计`
 
 ## Timeline
@@ -33,7 +34,8 @@ The left navigation remains light:
 - Normal edited preview playback skips deleted segments.
 - Clicking a dark block enters delete-segment inspection mode for listen, restore, and boundary nudge.
 - Default bottom area keeps a 44-56 px mini source timeline plus a thin shortcut reference strip below it.
-- `Cmd+B` expands the same bottom timeline into a decoded real-media waveform with range handles, zoom, speed, volume, and snap controls.
+- `Cmd+B` expands the same bottom timeline into a decoded real-media waveform with range handles, speed, volume, and snap controls. Hide zoom controls until zoom has a real viewport implementation.
+- Expanded waveform zoom uses one shared viewport: zoom changes the visible time range, pan moves that range, and waveform peaks, deleted blocks, risk marks, selection, labels, and click-to-seek all render against that same viewport.
 - Expanded mode must not show a second mini track above the waveform; it is one timeline in a larger form.
 
 ## Reference Build Notes
@@ -64,3 +66,8 @@ The left navigation remains light:
 - No persistent export file list.
 - No browser video preview.
 - No server/API change unless a UI behavior cannot work without it.
+
+## Backend Export Note
+
+- `/api/export`, `/api/render`, and `scripts/export_davinci_timeline.py` keep the legacy export location by default. Optional `outputDir`, `namingPrefix`, or timestamped CLI exports can write a separate handoff package under the project `exportDir`.
+- `scripts/resolve_import_timeline.py` is a dry-run Resolve handoff probe by default; it only attempts to connect to the active Resolve scripting API when run with `--execute`.
