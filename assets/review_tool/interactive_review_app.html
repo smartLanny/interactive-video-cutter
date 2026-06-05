@@ -5,15 +5,17 @@
 <style>
   :root {
     color-scheme: light;
-    --bg: #f6f7f9;
+    --bg: #f4f6f8;
     --ink: #15171a;
     --muted: #667085;
     --line: #d9dee7;
     --panel: #ffffff;
+    --panel-soft: #f9fafb;
     --accent: #0a66c2;
     --danger: #b42318;
     --ok: #087443;
     --soft: #eef2f7;
+    --shadow: 0 12px 28px rgba(16, 24, 40, 0.08);
   }
   * { box-sizing: border-box; }
   body {
@@ -27,7 +29,7 @@
     position: sticky;
     top: 0;
     z-index: 5;
-    background: rgba(246, 247, 249, 0.97);
+    background: rgba(244, 246, 248, 0.97);
     border-bottom: 1px solid var(--line);
     backdrop-filter: blur(8px);
   }
@@ -36,7 +38,7 @@
     grid-template-columns: 1fr auto;
     gap: 16px;
     align-items: center;
-    padding: 14px 18px 10px;
+    padding: 13px 20px 10px;
   }
   h1 {
     margin: 0;
@@ -51,6 +53,22 @@
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
+  }
+  .view-toggle {
+    display: inline-flex;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    overflow: hidden;
+    background: #fff;
+  }
+  .view-toggle button {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+  .view-toggle button.active {
+    background: var(--ink);
+    color: #fff;
   }
   .actions { justify-content: flex-end; }
   button, input, select, [contenteditable] {
@@ -119,17 +137,47 @@
     background: #fff;
     min-width: 220px;
   }
+  .review-column {
+    min-width: 0;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    min-height: 0;
+  }
+  .preview-column {
+    min-width: 0;
+    position: sticky;
+    top: 142px;
+    align-self: start;
+    max-height: calc(100vh - 160px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
   .players {
     display: grid;
-    grid-template-columns: minmax(280px, 1fr) minmax(260px, 420px);
-    gap: 14px;
-    padding: 12px 18px;
-    background: var(--soft);
-    border-bottom: 1px solid var(--line);
+    gap: 12px;
+  }
+  .preview-pair {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  .player {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #fff;
+    padding: 12px;
+    box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
   }
   .player label {
     display: block;
-    margin-bottom: 6px;
+    margin-bottom: 8px;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 650;
+  }
+  .preview-note {
+    min-height: 20px;
+    margin-top: 6px;
     color: var(--muted);
     font-size: 12px;
   }
@@ -145,12 +193,14 @@
     color: #fff;
   }
   audio, video { width: 100%; display: block; background: #000; }
-  video { max-height: 360px; }
+  video { max-height: min(300px, 34vh); }
   .export-panel {
     border: 1px solid var(--line);
+    border-radius: 8px;
     background: #fff;
-    padding: 10px;
+    padding: 12px;
     font-size: 13px;
+    box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
   }
   .export-panel h2 {
     margin: 0 0 8px;
@@ -160,6 +210,9 @@
   .export-list {
     display: grid;
     gap: 5px;
+    max-height: min(280px, 32vh);
+    overflow-y: auto;
+    padding-right: 4px;
   }
   .export-list div {
     overflow-wrap: anywhere;
@@ -180,18 +233,55 @@
     font-size: 13px;
   }
   .metric span { color: var(--muted); margin-right: 4px; }
-  main { padding: 14px 18px 36px; }
+  main.review-layout {
+    display: grid;
+    grid-template-columns: minmax(680px, 1fr) minmax(340px, 420px);
+    gap: 16px;
+    min-height: calc(100vh - 142px);
+    padding: 16px 20px 20px;
+    align-items: start;
+  }
   .toolbar {
     display: grid;
     grid-template-columns: minmax(240px, 1fr) auto auto;
     gap: 12px;
     align-items: center;
-    margin-bottom: 12px;
+    position: sticky;
+    top: 142px;
+    z-index: 3;
+    margin-bottom: 10px;
+    padding: 10px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.96);
+    box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+    backdrop-filter: blur(8px);
   }
   .filter-info {
     color: var(--muted);
     font-size: 13px;
     white-space: nowrap;
+  }
+  .review-filters {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    min-width: 0;
+  }
+  .review-filters button {
+    padding: 5px 8px;
+    font-size: 12px;
+  }
+  .review-filters .filter-count {
+    margin-left: 4px;
+    color: inherit;
+    opacity: 0.72;
+    font-variant-numeric: tabular-nums;
+  }
+  .toolbar .tool-buttons {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
   }
   .bulk-menu {
     position: relative;
@@ -238,14 +328,19 @@
   }
   .script {
     border: 1px solid var(--line);
+    border-radius: 8px;
     background: var(--panel);
+    overflow-y: auto;
+    min-height: 0;
+    max-height: calc(100vh - 214px);
+    box-shadow: var(--shadow);
   }
   .line-row {
     display: grid;
-    grid-template-columns: 116px minmax(0, 1fr) auto;
-    gap: 10px;
+    grid-template-columns: 124px minmax(0, 1fr) auto;
+    gap: 12px;
     align-items: start;
-    padding: 8px 10px;
+    padding: 10px 12px;
     border-bottom: 1px solid var(--line);
   }
   .line-row:last-child { border-bottom: 0; }
@@ -255,11 +350,160 @@
     background: #f8fbff;
   }
   .line-row.deleted {
-    background: #fafafa;
+    background: var(--panel-soft);
   }
   .line-row.deleted .line-text {
     text-decoration: line-through;
     color: #7a3030;
+  }
+  .line-row.review-focus,
+  .take-row.review-focus {
+    border-left: 4px solid #d92d20;
+    background: #fff7f5;
+  }
+  .line-row.review-asr:not(.review-focus),
+  .take-row.review-asr:not(.review-focus) {
+    border-left: 4px solid #b54708;
+    background: #fff8eb;
+  }
+  .line-row.review-metric:not(.review-focus):not(.review-asr),
+  .take-row.review-metric:not(.review-focus):not(.review-asr) {
+    border-left: 4px solid #1570ef;
+    background: #f5faff;
+  }
+  .line-row.review-term:not(.review-focus):not(.review-asr):not(.review-metric),
+  .take-row.review-term:not(.review-focus):not(.review-asr):not(.review-metric) {
+    border-left: 4px solid #7a2e83;
+    background: #fbf7ff;
+  }
+  .line-row.review-delete-suggestion:not(.review-focus):not(.review-asr):not(.review-metric):not(.review-term),
+  .take-row.review-delete-suggestion:not(.review-focus):not(.review-asr):not(.review-metric):not(.review-term) {
+    border-left: 4px solid #b42318;
+    background: #fffafa;
+  }
+  .line-row.pause .line-text {
+    color: var(--muted);
+    font-style: italic;
+  }
+  .candidate-groups {
+    display: grid;
+    gap: 12px;
+    padding: 12px;
+  }
+  .candidate-group {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #fff;
+    overflow: hidden;
+  }
+  .candidate-head {
+    display: grid;
+    gap: 5px;
+    padding: 10px 12px;
+    background: var(--panel-soft);
+    border-bottom: 1px solid var(--line);
+  }
+  .reference-text {
+    font-size: 15px;
+    line-height: 1.65;
+  }
+  .candidate-meta {
+    color: var(--muted);
+    font-size: 12px;
+  }
+  .qa-flags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-top: 6px;
+    font-size: 12px;
+  }
+  .qa-chip {
+    display: inline-flex;
+    align-items: center;
+    max-width: 100%;
+    min-height: 24px;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    padding: 2px 6px;
+    font-size: 12px;
+    font-weight: 650;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+  }
+  button.qa-chip {
+    white-space: normal;
+    cursor: pointer;
+  }
+  .qa-chip.flag-human {
+    border-color: #fecdca;
+    background: #fff1f0;
+    color: #b42318;
+  }
+  .qa-chip.flag-review {
+    border-color: #fecdd3;
+    background: #fff1f3;
+    color: #be123c;
+  }
+  .qa-chip.flag-polish {
+    border-color: #c7d7fe;
+    background: #eef4ff;
+    color: #3538cd;
+  }
+  .qa-chip.flag-asr {
+    border-color: #fedf89;
+    background: #fffaeb;
+    color: #b54708;
+  }
+  .qa-chip.flag-metric {
+    border-color: #b2ddff;
+    background: #eff8ff;
+    color: #175cd3;
+  }
+  .qa-chip.flag-term-protected {
+    border-color: #d9b8ff;
+    background: #f7efff;
+    color: #7a2e83;
+  }
+  .qa-chip.flag-term-reference {
+    border-color: #99f6e4;
+    background: #f0fdfa;
+    color: #0f766e;
+  }
+  .qa-chip.flag-delete {
+    border-color: #fda29b;
+    background: #fff4f3;
+    color: #b42318;
+  }
+  .qa-chip.flag-neutral {
+    border-color: #d0d5dd;
+    background: #f9fafb;
+    color: #475467;
+  }
+  .take-row {
+    display: grid;
+    grid-template-columns: 118px minmax(0, 1fr) auto;
+    gap: 12px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--line);
+  }
+  .take-row:last-child { border-bottom: 0; }
+  .take-row.deleted {
+    background: var(--panel-soft);
+  }
+  .take-row.active {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+    background: #f8fbff;
+  }
+  .take-row.deleted .take-text {
+    text-decoration: line-through;
+    color: #7a3030;
+  }
+  .take-text {
+    font-size: 15px;
+    line-height: 1.65;
+    overflow-wrap: anywhere;
   }
   .line-meta {
     display: grid;
@@ -276,12 +520,13 @@
   }
   .line-text {
     min-height: 34px;
-    padding: 5px 6px;
+    padding: 6px 7px;
     border-radius: 5px;
     outline: 0;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
     font-size: 16px;
+    line-height: 1.7;
   }
   .line-text:focus {
     background: #fff;
@@ -300,10 +545,25 @@
     color: var(--muted);
   }
   @media (max-width: 980px) {
-    .bar, .players, .toolbar, .line-row {
+    .bar, main.review-layout, .preview-pair, .toolbar, .line-row, .take-row {
       grid-template-columns: 1fr;
     }
+    main.review-layout {
+      min-height: auto;
+    }
+    .preview-column, .toolbar {
+      position: static;
+      max-height: none;
+    }
+    .preview-column {
+      order: -1;
+    }
+    .script {
+      max-height: 62vh;
+      overflow-y: auto;
+    }
     .filter-info { white-space: normal; }
+    .review-filters, .toolbar .tool-buttons { grid-column: auto; }
     .actions, .line-actions { justify-content: flex-start; }
     .bulk-panel {
       position: static;
@@ -317,7 +577,7 @@
   <div class="bar">
     <div>
       <h1 id="pageTitle">交互式全文稿审片</h1>
-      <div class="sub">一行一句；删除线行会被剪掉，取消删除线就保留。Enter 拆行；行首 Backspace 合并上行；⌘J/Ctrl+J 合并下行；空行 Delete 删行；⌘D/Ctrl+D 切换删除线。</div>
+      <div class="sub">一行一句；删除线行会被剪掉，取消删除线就保留。↑/↓ 切换审阅行；⌘P/Ctrl+P 播放当前行；←/→ 移动文字光标；Enter 拆行；行首 Backspace 合并上行；⌘J/Ctrl+J 合并下行；空行 Delete 转删除线；选中文字后 ⌘D/Ctrl+D 自动切分并给选区划删除线。</div>
       <div class="project-row">
         <label for="projectSelect" class="sub">项目</label>
         <select id="projectSelect"></select>
@@ -339,42 +599,60 @@
     </div>
   </div>
   <div class="status" id="status">载入中</div>
-  <section class="players">
-    <div class="player">
-      <label>媒体预览</label>
-      <div class="media-tabs" id="mediaTabs"></div>
-      <div id="mediaMount"></div>
-    </div>
-    <div class="export-panel">
-      <h2>最近导出</h2>
-      <div class="export-list" id="exportResults">还没有导出</div>
-    </div>
-  </section>
   <section class="metrics" id="metrics"></section>
 </header>
 
-<main>
-  <div class="toolbar">
-    <input id="search" type="search" placeholder="搜索全文、型号、价格、删点来源">
-    <div class="filter-info" id="filterInfo"></div>
-    <div class="tool-buttons">
-      <button id="showDeleted">只看删除线</button>
-      <button id="prevDeleted">上一条删除线</button>
-      <button id="nextDeleted">下一条删除线</button>
-      <details class="bulk-menu">
-        <summary>批量</summary>
-        <div class="bulk-panel">
-          <button id="restoreSuggested">恢复建议删除线</button>
-          <button id="clearDeleted">取消全部删除线</button>
-        </div>
-      </details>
+<main class="review-layout">
+  <section class="review-column">
+    <div class="toolbar">
+      <input id="search" type="search" placeholder="搜索全文、flag、中文风险标签、删点来源">
+      <div class="view-toggle" aria-label="审阅模式">
+        <button id="candidateModeBtn" type="button">文案候选</button>
+        <button id="lineModeBtn" type="button" class="active">全文行</button>
+      </div>
+      <div class="filter-info" id="filterInfo"></div>
+      <div class="review-filters" id="reviewFilters" aria-label="待审重点过滤"></div>
+      <div class="tool-buttons">
+        <button id="showDeleted">只看删除线</button>
+        <button id="prevDeleted">上一条删除线</button>
+        <button id="nextDeleted">下一条删除线</button>
+        <details class="bulk-menu">
+          <summary>批量</summary>
+          <div class="bulk-panel">
+            <button id="restoreSuggested">恢复建议删除线</button>
+            <button id="clearDeleted">取消全部删除线</button>
+          </div>
+        </details>
+      </div>
     </div>
-  </div>
-  <section class="script" id="scriptRows"></section>
+    <section class="script" id="scriptRows"></section>
+  </section>
+  <aside class="preview-column">
+    <section class="players">
+      <div class="preview-pair">
+        <div class="player">
+          <label>原始音频</label>
+          <div id="sourceMediaMount"></div>
+          <div class="preview-note">播放原始素材时间线</div>
+        </div>
+        <div class="player">
+          <label>删线音频</label>
+          <div id="editedMediaMount"></div>
+          <div class="preview-note" id="editedPreviewInfo">实时跳过删除线区间</div>
+        </div>
+      </div>
+      <div class="export-panel">
+        <h2>最近导出</h2>
+        <div class="export-list" id="exportResults">还没有导出</div>
+      </div>
+    </section>
+  </aside>
 </main>
 
 <script>
 const $ = (id) => document.getElementById(id);
+const VISIBLE_PUNCT_RE = /[，,、；;：:。！？!?]/g;
+const DECIMAL_DOT_TOKEN = "__DECIMAL_DOT__";
 const fmt = (s) => {
   s = Math.max(0, Number(s) || 0);
   const m = Math.floor(s / 60);
@@ -389,15 +667,48 @@ let meta = {};
 let state = { scriptLines: [], useScriptLines: true };
 let activeLineId = null;
 let showDeletedOnly = false;
-let activeMediaId = "";
 let baseRevision = null;
 let dirty = false;
 let saveConflict = null;
 let stopHandler = null;
+let stopMedia = null;
+let stopPollTimer = null;
+let editedSkipHandler = null;
+let editedSkipPollTimer = null;
+let editedSkipMedia = null;
 let busyMode = "";
 let lockToken = "";
 let lockStatus = { locked: false, heldByMe: false };
 let heartbeatTimer = null;
+let reviewMode = "lines";
+let qaFilter = "all";
+let undoStack = [];
+let redoStack = [];
+let pendingTextSnapshot = false;
+let textHistoryTimer = null;
+const MAX_HISTORY = 80;
+const REVIEW_FILTERS = [
+  { id: "all", label: "全部" },
+  { id: "focus", label: "重点" },
+  { id: "asr-gap", label: "ASR空窗" },
+  { id: "dense-metric", label: "密集数字" },
+  { id: "term-risk", label: "术语风险" },
+  { id: "delete-suggested", label: "删除建议" },
+];
+const QA_FLAG_DEFS = [
+  { keys: ["needs_human", "needs-human"], label: "人工复核", css: "flag-human", category: "focus", filter: "focus", priority: true, search: ["重点", "待审重点", "人审", "人工确认"] },
+  { keys: ["needs-review", "needs_review"], label: "待审重点", css: "flag-review", category: "focus", filter: "focus", priority: true, search: ["复核", "重点审查", "人工听"] },
+  { keys: ["ai-polish-focus"], label: "AI打磨重点", css: "flag-polish", category: "focus", filter: "focus", priority: true, search: ["AI polish", "重点打磨", "改稿重点"] },
+  { keys: ["asr-timestamp-gap"], label: "ASR空窗", css: "flag-asr", category: "asr-gap", filter: "asr-gap", priority: true, search: ["时间戳空窗", "空窗", "断点", "长停顿"] },
+  { keys: ["targeted-quality-asr-fix"], label: "定向ASR修正", css: "flag-asr", category: "focus", filter: "focus", priority: true, search: ["ASR修正", "定向复听", "质量ASR"] },
+  { keys: ["dense-metric-review"], label: "密集数字", css: "flag-metric", category: "dense-metric", filter: "dense-metric", priority: false, search: ["数字风险", "参数密集", "跑分", "规格"] },
+  { keys: ["long-window-review"], label: "长窗口", css: "flag-metric", category: "dense-metric", filter: "dense-metric", priority: false, search: ["长句", "长时间段", "断句风险"] },
+  { keys: ["protected-term-review"], label: "保护术语", css: "flag-term-protected", category: "term-risk", filter: "term-risk", priority: false, search: ["术语风险", "保护词", "专名", "型号"] },
+  { keys: ["term-not-in-reference"], label: "参考外术语", css: "flag-term-reference", category: "term-risk", filter: "term-risk", priority: false, search: ["术语风险", "参考未出现", "参考外", "专名"] },
+  { keys: ["off-reference"], label: "参考外口播", css: "flag-neutral", category: "", filter: "", priority: false, search: ["参考外", "非文案", "off reference"] },
+  { keys: ["suggested-delete", "delete-suggestion", "ai-polish-delete", "pause", "superseded-take"], label: "删除建议", css: "flag-delete", category: "delete-suggested", filter: "delete-suggested", priority: false, search: ["删点", "建议删除", "删除线", "AI删除", "停顿", "旧take"] },
+];
+const REVIEW_ROW_CLASSES = ["review-focus", "review-asr", "review-metric", "review-term", "review-delete-suggestion"];
 
 function makeId(prefix) {
   const value = globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -494,6 +805,178 @@ function escapeHtml(text) {
   }[ch]));
 }
 
+function normalizeFlagKey(flag) {
+  return String(flag || "").trim().toLowerCase();
+}
+
+function flagDefFor(flag) {
+  const key = normalizeFlagKey(flag);
+  const dashed = key.replace(/_/g, "-");
+  return QA_FLAG_DEFS.find(def => def.keys.includes(key) || def.keys.includes(dashed)) || null;
+}
+
+function inferredFlagCategory(flag) {
+  const key = normalizeFlagKey(flag).replace(/_/g, "-");
+  if (key.includes("timestamp-gap") || key.includes("asr-gap")) return "asr-gap";
+  if (key.includes("metric") || key.includes("dense")) return "dense-metric";
+  if (key.includes("term")) return "term-risk";
+  if (key.includes("delete")) return "delete-suggested";
+  if (key.includes("needs") || key.includes("review") || key.includes("focus")) return "focus";
+  return "";
+}
+
+function flagCategory(flag) {
+  return flagDefFor(flag)?.category || inferredFlagCategory(flag);
+}
+
+function flagFilterId(flag) {
+  const def = flagDefFor(flag);
+  if (def?.filter) return def.filter;
+  return flagCategory(flag) || "";
+}
+
+function flagLabel(flag) {
+  return flagDefFor(flag)?.label || String(flag || "").trim();
+}
+
+function flagCssClass(flag) {
+  const def = flagDefFor(flag);
+  if (def?.css) return def.css;
+  const category = flagCategory(flag);
+  if (category === "asr-gap") return "flag-asr";
+  if (category === "dense-metric") return "flag-metric";
+  if (category === "term-risk") return "flag-term-protected";
+  if (category === "delete-suggested") return "flag-delete";
+  if (category === "focus") return "flag-review";
+  return "flag-neutral";
+}
+
+function uniquePush(list, seen, value) {
+  const text = String(value || "").trim();
+  if (!text) return;
+  const key = normalizeFlagKey(text);
+  if (seen.has(key)) return;
+  seen.add(key);
+  list.push(text);
+}
+
+function isReviewItemSuggestedDelete(item, relatedLines = []) {
+  return Boolean((item && isSuggestedDeleteLine(item)) || relatedLines.some(line => line && isSuggestedDeleteLine(line)));
+}
+
+function reviewItemFlags(item, relatedLines = []) {
+  const flags = [];
+  const seen = new Set();
+  [item, ...relatedLines].forEach(source => {
+    (Array.isArray(source?.qaFlags) ? source.qaFlags : []).forEach(flag => uniquePush(flags, seen, flag));
+  });
+  if (isReviewItemSuggestedDelete(item, relatedLines)) uniquePush(flags, seen, "suggested-delete");
+  return flags;
+}
+
+function hasPriorityFlag(item, relatedLines = []) {
+  return reviewItemFlags(item, relatedLines).some(flag => {
+    const def = flagDefFor(flag);
+    return Boolean(def?.priority || flagCategory(flag) === "focus");
+  });
+}
+
+function reviewItemMatchesFilter(item, filterId, relatedLines = []) {
+  if (!filterId || filterId === "all") return true;
+  if (filterId === "focus") return hasPriorityFlag(item, relatedLines);
+  if (filterId === "delete-suggested") {
+    return isReviewItemSuggestedDelete(item, relatedLines)
+      || reviewItemFlags(item, relatedLines).some(flag => flagCategory(flag) === "delete-suggested");
+  }
+  return reviewItemFlags(item, relatedLines).some(flag => flagCategory(flag) === filterId);
+}
+
+function lineMatchesReviewFilter(line, filterId = qaFilter) {
+  return reviewItemMatchesFilter(line, filterId);
+}
+
+function activeReviewFilterLabel() {
+  return REVIEW_FILTERS.find(item => item.id === qaFilter)?.label || "全部";
+}
+
+function reviewFilterCounts() {
+  return Object.fromEntries(REVIEW_FILTERS.map(filter => [
+    filter.id,
+    filter.id === "all"
+      ? state.scriptLines.length
+      : state.scriptLines.filter(line => lineMatchesReviewFilter(line, filter.id)).length,
+  ]));
+}
+
+function renderReviewFilters() {
+  const mount = $("reviewFilters");
+  if (!mount) return;
+  const counts = reviewFilterCounts();
+  mount.innerHTML = REVIEW_FILTERS.map(filter => {
+    const active = qaFilter === filter.id;
+    return `<button type="button" class="small ${active ? "active" : ""}" data-review-filter="${escapeHtml(filter.id)}" aria-pressed="${active ? "true" : "false"}">${escapeHtml(filter.label)}<span class="filter-count">${counts[filter.id] || 0}</span></button>`;
+  }).join("");
+}
+
+function flagSearchTerms(flag) {
+  const def = flagDefFor(flag);
+  const raw = String(flag || "").trim();
+  return [
+    raw,
+    raw.replace(/[-_]/g, " "),
+    flagLabel(raw),
+    ...(def?.search || []),
+  ].filter(Boolean);
+}
+
+function reviewItemSearchText(item, relatedLines = [], extraText = "") {
+  const lineText = relatedLines.map(line => `${line.text || ""} ${line.source || ""}`).join(" ");
+  const flagText = reviewItemFlags(item, relatedLines).flatMap(flag => flagSearchTerms(flag)).join(" ");
+  return `${extraText || ""} ${item?.text || ""} ${item?.source || ""} ${lineText} ${flagText}`.toLowerCase();
+}
+
+function reviewFlagsHtml(item, relatedLines = []) {
+  const flags = reviewItemFlags(item, relatedLines);
+  if (!flags.length) return "";
+  const chips = flags.map(flag => {
+    const raw = String(flag || "").trim();
+    const label = flagLabel(raw);
+    const filter = flagFilterId(raw);
+    const title = label === raw ? raw : `${label} (${raw})`;
+    const attrs = filter ? ` type="button" data-review-filter="${escapeHtml(filter)}"` : "";
+    const tag = filter ? "button" : "span";
+    return `<${tag}${attrs} class="qa-chip ${escapeHtml(flagCssClass(raw))}" title="${escapeHtml(title)}">${escapeHtml(label)}</${tag}>`;
+  }).join("");
+  return `<div class="qa-flags" aria-label="待审重点">${chips}</div>`;
+}
+
+function reviewClassListForItem(item, relatedLines = []) {
+  return [
+    reviewItemMatchesFilter(item, "focus", relatedLines) ? "review-focus" : "",
+    reviewItemMatchesFilter(item, "asr-gap", relatedLines) ? "review-asr" : "",
+    reviewItemMatchesFilter(item, "dense-metric", relatedLines) ? "review-metric" : "",
+    reviewItemMatchesFilter(item, "term-risk", relatedLines) ? "review-term" : "",
+    reviewItemMatchesFilter(item, "delete-suggested", relatedLines) ? "review-delete-suggestion" : "",
+  ].filter(Boolean).join(" ");
+}
+
+function applyReviewRowClasses(row, item, relatedLines = []) {
+  row.classList.remove(...REVIEW_ROW_CLASSES);
+  reviewClassListForItem(item, relatedLines).split(" ").filter(Boolean).forEach(cls => row.classList.add(cls));
+}
+
+function cleanReviewText(text) {
+  return String(text || "")
+    .replace(/\s+/g, " ")
+    .replace(/(\d)\.(\d)/g, `$1${DECIMAL_DOT_TOKEN}$2`)
+    .replace(/([A-Za-z0-9%])\s*[，,、；;：:。！？!?]\s*(?=[A-Za-z0-9])/g, "$1 ")
+    .replace(VISIBLE_PUNCT_RE, "")
+    .replace(/\./g, "")
+    .replaceAll(DECIMAL_DOT_TOKEN, ".")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function shortRevision(value) {
   return value ? String(value).slice(0, 22) : "无";
 }
@@ -536,7 +1019,7 @@ function applyLockStatus(nextStatus = {}) {
     localStorage.removeItem(lockStorageKey());
   }
   renderControls();
-  renderRows();
+  renderAll();
 }
 
 function stopHeartbeat() {
@@ -623,6 +1106,105 @@ function setDirty(value = true) {
   renderMetrics();
 }
 
+function cloneValue(value) {
+  return JSON.parse(JSON.stringify(value ?? null));
+}
+
+function historySnapshot() {
+  return {
+    scriptLines: cloneValue(state.scriptLines || []),
+    referenceReview: cloneValue(state.referenceReview || null),
+    activeLineId,
+    showDeletedOnly,
+    reviewMode,
+    dirty,
+  };
+}
+
+function historyKey(snapshot) {
+  return JSON.stringify({
+    scriptLines: snapshot.scriptLines,
+    referenceReview: snapshot.referenceReview,
+    activeLineId: snapshot.activeLineId,
+    showDeletedOnly: snapshot.showDeletedOnly,
+    reviewMode: snapshot.reviewMode,
+  });
+}
+
+function clearHistory() {
+  undoStack = [];
+  redoStack = [];
+  pendingTextSnapshot = false;
+  if (textHistoryTimer) clearTimeout(textHistoryTimer);
+  textHistoryTimer = null;
+}
+
+function pushUndoSnapshot(label = "edit") {
+  if (!canEdit()) return false;
+  const snapshot = historySnapshot();
+  const key = historyKey(snapshot);
+  if (undoStack.length && undoStack[undoStack.length - 1].key === key) return false;
+  undoStack.push({ key, snapshot, label });
+  if (undoStack.length > MAX_HISTORY) undoStack.shift();
+  redoStack = [];
+  return true;
+}
+
+function beginTextHistory() {
+  if (!canEdit() || pendingTextSnapshot) return;
+  pushUndoSnapshot("text");
+  pendingTextSnapshot = true;
+  if (textHistoryTimer) clearTimeout(textHistoryTimer);
+  textHistoryTimer = setTimeout(() => {
+    pendingTextSnapshot = false;
+    textHistoryTimer = null;
+  }, 700);
+}
+
+function restoreSnapshot(snapshot) {
+  state.scriptLines = cloneValue(snapshot.scriptLines || []);
+  state.referenceReview = cloneValue(snapshot.referenceReview || null);
+  activeLineId = snapshot.activeLineId;
+  showDeletedOnly = Boolean(snapshot.showDeletedOnly);
+  reviewMode = snapshot.reviewMode || "lines";
+  dirty = true;
+  renumberLines();
+  renderAll();
+  requestAnimationFrame(() => {
+    if (activeLineId) scrollActiveIntoView();
+  });
+}
+
+function undoEdit() {
+  if (!requireEdit()) return;
+  pendingTextSnapshot = false;
+  if (textHistoryTimer) clearTimeout(textHistoryTimer);
+  textHistoryTimer = null;
+  if (!undoStack.length) {
+    setStatus("没有可撤回内容", "danger-text");
+    return;
+  }
+  redoStack.push({ key: historyKey(historySnapshot()), snapshot: historySnapshot(), label: "redo" });
+  const entry = undoStack.pop();
+  restoreSnapshot(entry.snapshot);
+  setStatus("已撤回", "ok");
+}
+
+function redoEdit() {
+  if (!requireEdit()) return;
+  pendingTextSnapshot = false;
+  if (textHistoryTimer) clearTimeout(textHistoryTimer);
+  textHistoryTimer = null;
+  if (!redoStack.length) {
+    setStatus("没有可重做内容", "danger-text");
+    return;
+  }
+  undoStack.push({ key: historyKey(historySnapshot()), snapshot: historySnapshot(), label: "undo" });
+  const entry = redoStack.pop();
+  restoreSnapshot(entry.snapshot);
+  setStatus("已重做", "ok");
+}
+
 function renderProjectInfo() {
   const project = projects.find(item => item.id === currentProjectId);
   const dirtyText = dirty ? "未保存" : "已保存";
@@ -667,12 +1249,13 @@ async function loadData(projectId = currentProjectId, options = {}) {
   baseRevision = data.revision || meta.stateRevision || null;
   dirty = false;
   saveConflict = null;
+  clearHistory();
   applyLockStatus(data.lockStatus || { locked: false, heldByMe: false });
   state.useScriptLines = true;
   if (!Array.isArray(state.scriptLines)) state.scriptLines = [];
+  if (!state.referenceReview) state.referenceReview = null;
   $("pageTitle").textContent = meta.title || "交互式全文稿审片";
   document.title = meta.title || "交互式全文稿审片";
-  activeMediaId = (meta.media || [])[0]?.id || "";
   renumberLines();
   renderAll();
   renderMediaTabs();
@@ -692,12 +1275,16 @@ function deletedDuration() {
 
 function renderMetrics() {
   const deletedLines = state.scriptLines.filter(line => line.deleted).length;
+  const referenceGroups = state.referenceReview?.groups?.length || 0;
   const removed = deletedDuration();
   const visibleCount = visibleLines().length;
-  const filterActive = Boolean($("search")?.value.trim()) || showDeletedOnly;
+  const filterActive = Boolean($("search")?.value.trim()) || showDeletedOnly || qaFilter !== "all";
+  const reviewCounts = reviewFilterCounts();
   $("metrics").innerHTML = [
     `<div class="metric"><span>项目</span>${escapeHtml(meta.title || currentProjectId)}</div>`,
     `<div class="metric"><span>全文行数</span>${state.scriptLines.length}</div>`,
+    referenceGroups ? `<div class="metric"><span>文案组</span>${referenceGroups}</div>` : "",
+    `<div class="metric"><span>待审重点</span>${reviewCounts.focus || 0}</div>`,
     `<div class="metric"><span>删除线</span>${deletedLines}</div>`,
     `<div class="metric"><span>删除时长</span>${fmt(removed)}</div>`,
     `<div class="metric"><span>预计成片</span>${fmt(meta.originalDuration - removed)}</div>`,
@@ -706,28 +1293,59 @@ function renderMetrics() {
     `<div class="metric"><span>状态</span>${dirty ? "未保存" : "已保存"}</div>`,
     `<div class="metric"><span>保存路径</span>${escapeHtml(meta.statePath || "")}</div>`
   ].filter(Boolean).join("");
-  $("filterInfo").textContent = filterActive ? `显示 ${visibleCount} / ${state.scriptLines.length}` : "";
+  $("filterInfo").textContent = filterActive
+    ? `显示 ${visibleCount} / ${state.scriptLines.length}${qaFilter !== "all" ? ` · ${activeReviewFilterLabel()}` : ""}`
+    : "";
+  updateEditedPreviewInfo();
   renderProjectInfo();
 }
 
-function activeMediaItem() {
-  return (meta.media || []).find(item => item.id === activeMediaId) || (meta.media || [])[0];
+function defaultMediaItem(items) {
+  const draftAudio = (items || []).find(item => item.id === "draft" && item.type === "audio");
+  return draftAudio || (items || [])[0] || null;
+}
+
+function reviewAudioItem() {
+  return (meta.media || []).find(item => item.id === "draft" && item.type === "audio") || null;
+}
+
+function sourcePreviewItem() {
+  const audio = reviewAudioItem();
+  if (audio) return audio;
+  const items = meta.media || [];
+  return items.find(item => item.id === "source-video")
+    || items.find(item => item.id === "source")
+    || (meta.sourceMedia ? {
+      id: "source",
+      label: meta.mediaType === "video" ? "原始视频" : "原始音频",
+      type: meta.mediaType === "video" ? "video" : "audio",
+      url: meta.sourceMedia,
+    } : null)
+    || defaultMediaItem(items);
+}
+
+function editedPreviewItem() {
+  const audio = reviewAudioItem();
+  if (audio) return audio;
+  const items = meta.media || [];
+  return items.find(item => item.id === "draft")
+    || items.find(item => item.id === "preview-media")
+    || items.find(item => item.id === "source")
+    || defaultMediaItem(items);
+}
+
+function mediaTagHtml(item, attr) {
+  if (!item) return `<div class="empty">当前项目没有可预览媒体</div>`;
+  const tag = item.type === "video" ? "video" : "audio";
+  return `<${tag} ${attr} controls preload="metadata" src="${escapeHtml(item.url)}"></${tag}>`;
 }
 
 function renderMediaTabs() {
-  const items = meta.media || [];
-  if (!items.length) {
-    $("mediaTabs").innerHTML = "";
-    $("mediaMount").innerHTML = `<div class="empty">当前项目没有可预览媒体</div>`;
-    return;
-  }
-  if (!items.some(item => item.id === activeMediaId)) activeMediaId = items[0].id;
-  $("mediaTabs").innerHTML = items.map(item =>
-    `<button class="small ${item.id === activeMediaId ? "active" : ""}" data-media-tab="${escapeHtml(item.id)}">${escapeHtml(item.label)}</button>`
-  ).join("");
-  const item = activeMediaItem();
-  const tag = item.type === "video" ? "video" : "audio";
-  $("mediaMount").innerHTML = `<${tag} data-active-media controls preload="metadata" src="${escapeHtml(item.url)}"></${tag}>`;
+  const sourceItem = sourcePreviewItem();
+  const editedItem = editedPreviewItem();
+  $("sourceMediaMount").innerHTML = mediaTagHtml(sourceItem, "data-source-media");
+  $("editedMediaMount").innerHTML = mediaTagHtml(editedItem, "data-edited-media");
+  attachEditedSkipPreview();
 }
 
 function renderExportResults(result = null) {
@@ -762,9 +1380,57 @@ function visibleLines() {
   const q = $("search").value.trim().toLowerCase();
   return state.scriptLines.filter(line => {
     if (showDeletedOnly && !line.deleted) return false;
+    if (!lineMatchesReviewFilter(line)) return false;
     if (!q) return true;
-    return `${line.text} ${line.source || ""}`.toLowerCase().includes(q);
+    return reviewItemSearchText(line).includes(q);
   });
+}
+
+function lineIdsForTake(take) {
+  return Array.isArray(take.lineIds) && take.lineIds.length ? take.lineIds : [take.lineId].filter(Boolean);
+}
+
+function linesForTake(take) {
+  if (take.takeId) {
+    const lines = linesForTakeId(take.takeId);
+    if (lines.length) return lines;
+  }
+  return lineIdsForTake(take).map(id => lineById(id)).filter(Boolean);
+}
+
+function takeText(take) {
+  const lines = linesForTake(take);
+  return lines.length ? lines.map(line => line.text || "").join("") : (take.text || "");
+}
+
+function takeDeleted(take) {
+  const lines = linesForTake(take);
+  return lines.length ? lines.every(line => line.deleted) : Boolean(take.deleted);
+}
+
+function visibleCandidateGroups() {
+  const q = $("search").value.trim().toLowerCase();
+  const groups = state.referenceReview?.groups || [];
+  return groups.map(group => ({
+    ...group,
+    takes: (group.takes || []).filter(take => {
+      const lines = linesForTake(take);
+      const text = reviewItemSearchText(take, lines, group.referenceText || "");
+      if (showDeletedOnly && !takeDeleted(take)) return false;
+      if (!reviewItemMatchesFilter(take, qaFilter, lines)) return false;
+      return !q || text.includes(q);
+    }),
+  })).filter(group => group.takes.length);
+}
+
+function renderModeControls() {
+  const hasReference = Boolean(state.referenceReview?.groups?.length);
+  if (!hasReference && reviewMode === "candidates") reviewMode = "lines";
+  $("candidateModeBtn").disabled = !hasReference;
+  $("candidateModeBtn").classList.toggle("active", reviewMode === "candidates");
+  $("lineModeBtn").classList.toggle("active", reviewMode === "lines");
+  $("showDeleted").classList.toggle("active", showDeletedOnly);
+  renderReviewFilters();
 }
 
 function renderRows() {
@@ -773,23 +1439,77 @@ function renderRows() {
   $("scriptRows").innerHTML = rows.map(line => {
     const deleted = Boolean(line.deleted);
     const active = String(line.id) === String(activeLineId);
-    return `<div class="line-row ${deleted ? "deleted" : ""} ${active ? "active" : ""}" data-line-id="${line.id}">
+    const pause = line.lineType === "pause";
+    const flags = reviewFlagsHtml(line);
+    const rowClass = ["line-row", deleted ? "deleted" : "", active ? "active" : "", pause ? "pause" : "", reviewClassListForItem(line)].filter(Boolean).join(" ");
+    return `<div class="${rowClass}" data-line-id="${line.id}">
       <div class="line-meta">
         <div><span class="line-number">#${line.index}</span></div>
-        <div class="time">${fmt(line.start)}-${fmt(line.end)}</div>
+        <div class="time">源 ${fmt(line.start)}-${fmt(line.end)}<br>${deleted ? "成片 删除" : `成片 ${fmt(sourceToOutputTime(line.start))}`}</div>
       </div>
-      <div class="line-text" data-line-text="${line.id}" contenteditable="${editable ? "true" : "false"}" spellcheck="false">${escapeHtml(line.text)}</div>
+      <div>
+        <div class="line-text" data-line-text="${line.id}" contenteditable="${editable ? "true" : "false"}" spellcheck="false">${escapeHtml(line.text)}</div>
+        ${flags}
+      </div>
       <div class="line-actions">
         <button class="small" data-play-line="${line.id}">播放</button>
+        <button class="small danger" data-toggle-delete="${line.id}" ${editable ? "" : "disabled"}>${deleted ? "保留" : "删线"}</button>
         <button class="small" data-insert-after="${line.id}" ${editable ? "" : "disabled"}>插下</button>
       </div>
     </div>`;
   }).join("") || `<div class="empty">没有匹配的行</div>`;
 }
 
+function renderCandidateGroups() {
+  const editable = canEdit();
+  const groups = visibleCandidateGroups();
+  $("scriptRows").innerHTML = groups.length ? `<div class="candidate-groups">${
+    groups.map(group => {
+      const refNumber = Number(group.referenceIndex) + 1;
+      const takes = group.takes || [];
+      const multiTake = takes.length > 1;
+      const groupLabel = multiTake ? `${takes.length} 个候选` : "已匹配";
+      return `<section class="candidate-group">
+        <div class="candidate-head">
+          <div class="candidate-meta">参考句 #${refNumber} · ${groupLabel}</div>
+          <div class="reference-text">${escapeHtml(group.referenceText || "")}</div>
+        </div>
+        ${takes.map(take => {
+          const lines = linesForTake(take);
+          const firstLine = lines[0] || null;
+          const deleted = takeDeleted(take);
+          const active = firstLine && String(firstLine.id) === String(activeLineId);
+          const flags = reviewFlagsHtml(take, lines);
+          const start = firstLine ? Math.min(...lines.map(line => parseNum(line.start))) : parseNum(take.start);
+          const end = firstLine ? Math.max(...lines.map(line => parseNum(line.end))) : parseNum(take.end);
+          const rowClass = ["take-row", deleted ? "deleted" : "", active ? "active" : "", reviewClassListForItem(take, lines)].filter(Boolean).join(" ");
+          return `<div class="${rowClass}" data-take-id="${escapeHtml(take.takeId || "")}" data-line-id="${firstLine?.id || take.lineId || ""}">
+            <div class="line-meta">
+              <div><span class="line-number">#${escapeHtml(firstLine?.index || take.index || take.lineId || "")}</span></div>
+              <div class="time">源 ${fmt(start)}-${fmt(end)}<br>${deleted ? "成片 删除" : `成片 ${fmt(sourceToOutputTime(start))}`}</div>
+              <div class="candidate-meta">score ${(Number(take.matchScore) || 0).toFixed(2)}</div>
+            </div>
+            <div>
+              <div class="take-text">${escapeHtml(takeText(take))}</div>
+              ${flags}
+            </div>
+            <div class="line-actions">
+              <button class="small" data-play-line="${firstLine?.id || take.lineId || ""}">播放</button>
+              ${multiTake ? `<button class="small primary" data-keep-take="${escapeHtml(take.takeId || "")}" ${editable && deleted ? "" : "disabled"}>保留此条</button>` : ""}
+              <button class="small danger" data-toggle-take-delete="${escapeHtml(take.takeId || "")}" ${editable ? "" : "disabled"}>${deleted ? "保留" : "删线"}</button>
+            </div>
+          </div>`;
+        }).join("")}
+      </section>`;
+    }).join("")
+  }</div>` : `<div class="empty">没有匹配的文案候选；可切回全文行继续审阅</div>`;
+}
+
 function renderAll() {
   renderMetrics();
-  renderRows();
+  renderModeControls();
+  if (reviewMode === "candidates") renderCandidateGroups();
+  else renderRows();
 }
 
 function lineById(id) {
@@ -830,6 +1550,7 @@ function updateLineRowState(line) {
   if (!row) return false;
   row.classList.toggle("deleted", Boolean(line.deleted));
   row.classList.toggle("active", String(line.id) === String(activeLineId));
+  applyReviewRowClasses(row, line);
   return true;
 }
 
@@ -838,28 +1559,80 @@ function scrollActiveIntoView() {
   if (row) row.scrollIntoView({ block: "center", behavior: "smooth" });
 }
 
+function placeCaretAtEnd(el) {
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  range.collapse(false);
+  const selection = window.getSelection();
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
+function focusLineText(id) {
+  const el = document.querySelector(`[data-line-text="${CSS.escape(String(id))}"]`);
+  if (!el) return false;
+  el.focus();
+  placeCaretAtEnd(el);
+  return true;
+}
+
 function setActive(id, rerender = true) {
   activeLineId = Number(id);
-  if (rerender) renderRows();
-  else updateActiveRowClass();
-  renderMetrics();
+  if (rerender) {
+    renderAll();
+  } else {
+    updateActiveRowClass();
+    renderMetrics();
+  }
 }
 
 function syncTextFromElement(el) {
   if (!canEdit()) return;
   const line = lineById(el.dataset.lineText);
   if (!line) return;
-  line.text = String(el.innerText || "").replace(/\n/g, " ").trim();
+  line.text = String(el.textContent ?? el.innerText ?? "")
+    .replace(/\u00a0/g, " ")
+    .replace(/[\r\n\t]+/g, " ");
   setActive(line.id, false);
   setDirty();
   renderMetrics();
+}
+
+function lineTextValue(line) {
+  return cleanReviewText(line?.text || "");
+}
+
+function partTime(line, offset, textLength) {
+  const start = parseNum(line.start);
+  const end = Math.max(start + 0.05, parseNum(line.end));
+  const length = Math.max(1, textLength);
+  return start + (end - start) * Math.max(0, Math.min(length, offset)) / length;
+}
+
+function setLineDeleted(line, reason = "manual-delete") {
+  line.deleted = true;
+  if (!lineTextValue(line)) line.text = "手动删除";
+  if (!String(line.source || "").includes(reason)) {
+    line.source = `${line.source || ""} ${reason}`.trim();
+  }
+}
+
+function isSuggestedDeleteLine(line) {
+  const source = String(line.source || "");
+  return source.startsWith("delete#")
+    || source.includes("suggested-delete")
+    || source.includes("delete-csv")
+    || source.includes("semantic-llm:delete")
+    || source.includes("targeted-fix:delete")
+    || line.lineType === "pause";
 }
 
 function splitLine(id, pos = null) {
   if (!requireEdit()) return;
   const line = lineById(id);
   if (!line) return;
-  const text = String(line.text || "");
+  pushUndoSnapshot("split-line");
+  const text = lineTextValue(line);
   const cut = Math.max(0, Math.min(text.length, pos ?? Math.ceil(text.length / 2)));
   const left = text.slice(0, cut).trim();
   const right = text.slice(cut).trim();
@@ -870,6 +1643,7 @@ function splitLine(id, pos = null) {
   line.text = left;
   line.end = mid;
   const newLine = {
+    ...line,
     id: nextLineId(),
     index: line.index + 1,
     start: mid,
@@ -889,6 +1663,7 @@ function mergeWithPrevious(id) {
   if (!requireEdit()) return;
   const idx = lineIndexById(id);
   if (idx <= 0) return;
+  pushUndoSnapshot("merge-previous");
   const prev = state.scriptLines[idx - 1];
   const line = state.scriptLines[idx];
   prev.text = `${prev.text}${line.text ? " " + line.text : ""}`.trim();
@@ -904,6 +1679,7 @@ function mergeNext(id) {
   if (!requireEdit()) return;
   const idx = lineIndexById(id);
   if (idx < 0 || idx >= state.scriptLines.length - 1) return;
+  pushUndoSnapshot("merge-next");
   const line = state.scriptLines[idx];
   const next = state.scriptLines[idx + 1];
   line.text = `${line.text}${next.text ? " " + next.text : ""}`.trim();
@@ -919,6 +1695,7 @@ function insertAfter(id) {
   if (!requireEdit()) return;
   const idx = lineIndexById(id);
   if (idx < 0) return;
+  pushUndoSnapshot("insert-line");
   const line = state.scriptLines[idx];
   const t = parseNum(line.end);
   const newLine = {
@@ -940,13 +1717,15 @@ function toggleDelete(id) {
   if (!requireEdit()) return;
   const line = lineById(id);
   if (!line) return;
+  pushUndoSnapshot("toggle-delete");
   line.deleted = !line.deleted;
+  if (line.deleted && !lineTextValue(line)) setLineDeleted(line);
   activeLineId = Number(line.id);
   setDirty();
   if (showDeletedOnly) {
-    renderRows();
+    renderAll();
   } else if (!updateLineRowState(line)) {
-    renderRows();
+    renderAll();
   }
   updateActiveRowClass();
   renderMetrics();
@@ -957,15 +1736,81 @@ function removeLine(id, confirmDelete = true) {
   const idx = lineIndexById(id);
   if (idx < 0) return;
   const line = state.scriptLines[idx];
-  if (confirmDelete && !confirm(`确定要删除第 ${line.index} 行？这会从审阅稿里移除这一行，不只是画删除线。`)) return;
-  state.scriptLines.splice(idx, 1);
-  renumberLines();
-  activeLineId = state.scriptLines[Math.max(0, idx - 1)]?.id || null;
+  if (confirmDelete && !confirm(`确定把第 ${line.index} 行标记为删除线？导出的 XML 会剪掉这一段。`)) return;
+  pushUndoSnapshot("remove-line");
+  setLineDeleted(line);
+  activeLineId = line.id;
   setDirty();
   renderAll();
 }
 
-function moveActive(delta) {
+function selectionOffsetsInElement(el) {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return null;
+  const range = selection.getRangeAt(0);
+  if (!el.contains(range.startContainer) || !el.contains(range.endContainer)) return null;
+  const startRange = range.cloneRange();
+  startRange.selectNodeContents(el);
+  startRange.setEnd(range.startContainer, range.startOffset);
+  const endRange = range.cloneRange();
+  endRange.selectNodeContents(el);
+  endRange.setEnd(range.endContainer, range.endOffset);
+  const start = startRange.toString().length;
+  const end = endRange.toString().length;
+  return {
+    start: Math.max(0, Math.min(start, end)),
+    end: Math.max(start, end),
+  };
+}
+
+function splitSelectionAsDeleted(textEl) {
+  if (!requireEdit()) return false;
+  const line = lineById(textEl.dataset.lineText);
+  if (!line) return false;
+  const offsets = selectionOffsetsInElement(textEl);
+  const text = lineTextValue(line);
+  if (!offsets || offsets.end <= offsets.start || !text) return false;
+  const startOffset = Math.max(0, Math.min(text.length, offsets.start));
+  const endOffset = Math.max(startOffset, Math.min(text.length, offsets.end));
+  if (endOffset <= startOffset) return false;
+
+  const idx = lineIndexById(line.id);
+  pushUndoSnapshot("selection-delete");
+  let nextIdValue = nextLineId();
+  const originalEnd = Math.max(partTime(line, 0, text.length) + 0.01, parseNum(line.end));
+  const parts = [
+    { text: text.slice(0, startOffset), startOffset: 0, endOffset: startOffset, deleted: false, source: line.source || "" },
+    { text: text.slice(startOffset, endOffset), startOffset, endOffset, deleted: true, source: `${line.source || ""} manual-selection-delete`.trim() },
+    { text: text.slice(endOffset), startOffset: endOffset, endOffset: text.length, deleted: false, source: line.source || "" },
+  ];
+  const replacement = [];
+  for (const part of parts) {
+    const partText = cleanReviewText(part.text);
+    if (!part.deleted && !partText) continue;
+    const partStart = partTime(line, part.startOffset, text.length);
+    const partEnd = Math.min(originalEnd, Math.max(partStart, partTime(line, part.endOffset, text.length)));
+    if (partEnd <= partStart + 0.001) continue;
+    replacement.push({
+      ...line,
+      id: replacement.length === 0 ? line.id : nextIdValue++,
+      index: line.index + replacement.length,
+      start: Number(partStart.toFixed(3)),
+      end: Number(partEnd.toFixed(3)),
+      text: partText || "手动删除",
+      deleted: part.deleted,
+      source: part.source,
+    });
+  }
+  if (!replacement.length) return false;
+  state.scriptLines.splice(idx, 1, ...replacement);
+  renumberLines();
+  setDirty();
+  setActive(replacement.find(item => item.deleted)?.id || replacement[0].id);
+  scrollActiveIntoView();
+  return true;
+}
+
+function moveActive(delta, focusText = false) {
   const rows = visibleLines();
   if (!rows.length) return;
   const current = rows.findIndex(line => String(line.id) === String(activeLineId));
@@ -974,6 +1819,7 @@ function moveActive(delta) {
     : Math.max(0, Math.min(rows.length - 1, current + delta));
   setActive(rows[next].id);
   scrollActiveIntoView();
+  if (focusText) requestAnimationFrame(() => focusLineText(rows[next].id));
 }
 
 function jumpDeleted(delta) {
@@ -991,24 +1837,178 @@ function jumpDeleted(delta) {
   scrollActiveIntoView();
 }
 
-function playRange(start, end) {
-  const media = document.querySelector("[data-active-media]");
-  if (!media) return;
-  if (stopHandler) {
-    media.removeEventListener("timeupdate", stopHandler);
-    stopHandler = null;
+function linesForTakeId(takeId) {
+  return state.scriptLines.filter(line => String(line.takeId || "") === String(takeId));
+}
+
+function referenceIndexForTake(takeId) {
+  const line = linesForTakeId(takeId)[0];
+  return line?.referenceIndex;
+}
+
+function keepTake(takeId) {
+  if (!requireEdit()) return;
+  const refIndex = referenceIndexForTake(takeId);
+  if (refIndex === undefined || refIndex === null) return;
+  pushUndoSnapshot("keep-take");
+  state.scriptLines.forEach(line => {
+    if (line.referenceIndex !== refIndex || line.lineType === "pause") return;
+    const keep = String(line.takeId || "") === String(takeId);
+    line.deleted = !keep;
+    line.takeRole = keep ? "primary" : "alternate";
+  });
+  setDirty();
+  setStatus("已保留该候选 take", "ok");
+  renderAll();
+}
+
+function toggleTakeDelete(takeId) {
+  if (!requireEdit()) return;
+  const lines = linesForTakeId(takeId);
+  if (!lines.length) return;
+  pushUndoSnapshot("toggle-take-delete");
+  const shouldDelete = !lines.every(line => line.deleted);
+  lines.forEach(line => {
+    line.deleted = shouldDelete;
+    line.takeRole = shouldDelete && line.takeRole === "primary" ? "alternate" : line.takeRole;
+  });
+  activeLineId = lines[0].id;
+  setDirty();
+  setStatus(shouldDelete ? "已标记该候选 take 为删除" : "已恢复该候选 take", "ok");
+  renderAll();
+}
+
+function deletedIntervals() {
+  const intervals = state.scriptLines
+    .filter(line => line.deleted)
+    .map(line => ({
+      start: parseNum(line.start),
+      end: Math.max(parseNum(line.start), parseNum(line.end)),
+    }))
+    .filter(item => item.end > item.start + 0.02)
+    .sort((a, b) => a.start - b.start || a.end - b.end);
+  const merged = [];
+  for (const item of intervals) {
+    const last = merged[merged.length - 1];
+    if (last && item.start <= last.end + 0.02) {
+      last.end = Math.max(last.end, item.end);
+    } else {
+      merged.push({ ...item });
+    }
   }
-  const stopAt = Number(end) + 0.25;
+  return merged;
+}
+
+function nextKeptTime(value) {
+  let time = Math.max(0, Number(value) || 0);
+  for (const item of deletedIntervals()) {
+    if (time >= item.start - 0.01 && time < item.end - 0.01) {
+      time = item.end + 0.01;
+    }
+  }
+  return time;
+}
+
+function sourceToOutputTime(value) {
+  let removed = 0;
+  const time = Math.max(0, Number(value) || 0);
+  for (const item of deletedIntervals()) {
+    if (time >= item.end) {
+      removed += item.end - item.start;
+    } else if (time > item.start) {
+      removed += time - item.start;
+      break;
+    } else {
+      break;
+    }
+  }
+  return Math.max(0, time - removed);
+}
+
+function applyEditedSkip(media) {
+  if (!media) return;
+  let current = Number(media.currentTime) || 0;
+  const intervals = deletedIntervals();
+  for (let guard = 0; guard < intervals.length; guard += 1) {
+    const item = intervals.find(candidate => current >= candidate.start && current < candidate.end - 0.02);
+    if (!item) break;
+    current = item.end + 0.01;
+    media.currentTime = current;
+  }
+}
+
+function clearEditedSkipPreview() {
+  const media = editedSkipMedia;
+  if (media && editedSkipHandler) {
+    media.removeEventListener("timeupdate", editedSkipHandler);
+    media.removeEventListener("seeking", editedSkipHandler);
+  }
+  if (editedSkipPollTimer) clearInterval(editedSkipPollTimer);
+  editedSkipHandler = null;
+  editedSkipPollTimer = null;
+  editedSkipMedia = null;
+}
+
+function attachEditedSkipPreview() {
+  const media = document.querySelector("[data-edited-media]");
+  if (!media) return;
+  clearEditedSkipPreview();
+  editedSkipHandler = () => applyEditedSkip(media);
+  editedSkipMedia = media;
+  media.addEventListener("timeupdate", editedSkipHandler);
+  media.addEventListener("seeking", editedSkipHandler);
+  editedSkipPollTimer = setInterval(() => {
+    if (!media.paused) applyEditedSkip(media);
+  }, 20);
+  updateEditedPreviewInfo();
+}
+
+function updateEditedPreviewInfo() {
+  if (!$("editedPreviewInfo")) return;
+  const deleted = deletedIntervals().reduce((sum, item) => sum + item.end - item.start, 0);
+  $("editedPreviewInfo").textContent = deleted > 0
+    ? `实时跳过 ${fmt(deleted)} 删除线；播放器时间仍显示原始素材时间`
+    : "当前没有删除线，右侧预览等同原始素材";
+}
+
+function clearPlaybackStop() {
+  if (stopMedia && stopHandler) stopMedia.removeEventListener("timeupdate", stopHandler);
+  if (stopPollTimer) clearInterval(stopPollTimer);
+  stopHandler = null;
+  stopMedia = null;
+  stopPollTimer = null;
+}
+
+function stopPlayback(media) {
+  media.pause();
+  clearPlaybackStop();
+}
+
+function playRange(start, end, target = "source") {
+  const media = document.querySelector(target === "source" ? "[data-source-media]" : "[data-edited-media]");
+  if (!media) return;
+  clearPlaybackStop();
+  const startAt = Number(start) || 0;
+  const endAt = Math.max(startAt + 0.05, Number(end) || startAt + 0.05);
+  const preRoll = target === "source" ? 0 : 0.15;
+  const postRoll = target === "source" ? 0 : 0.12;
+  const stopAt = endAt + postRoll;
   stopHandler = () => {
+    if (target === "edited") applyEditedSkip(media);
     if (media.currentTime >= stopAt) {
-      media.pause();
-      media.removeEventListener("timeupdate", stopHandler);
-      stopHandler = null;
+      stopPlayback(media);
     }
   };
-  media.currentTime = Math.max(0, Number(start) - 0.15);
+  media.currentTime = target === "edited"
+    ? Math.max(0, nextKeptTime(startAt) - preRoll)
+    : Math.max(0, startAt - preRoll);
+  stopMedia = media;
   media.addEventListener("timeupdate", stopHandler);
-  media.play();
+  stopPollTimer = setInterval(stopHandler, target === "source" ? 10 : 30);
+  const playResult = media.play();
+  if (playResult?.catch) {
+    playResult.catch(() => clearPlaybackStop());
+  }
 }
 
 function handleConflict(data) {
@@ -1083,19 +2083,6 @@ async function exportState(render = false) {
     baseRevision = data.revision || baseRevision;
     dirty = false;
     saveConflict = null;
-    if (r.audioUrl || r.videoUrl || r.mediaUrl) {
-      const isVideo = Boolean(r.videoUrl);
-      const id = isVideo ? "rendered-video" : "rendered-audio";
-      meta.media = (meta.media || []).filter(item => item.id !== id);
-      meta.media.push({
-        id,
-        label: isVideo ? "渲染预览视频" : "渲染预览音频",
-        type: isVideo ? "video" : "audio",
-        url: `${r.videoUrl || r.audioUrl || r.mediaUrl}?t=${Date.now()}`,
-      });
-      activeMediaId = id;
-      renderMediaTabs();
-    }
     renderExportResults(r);
     renderAll();
     setStatus(render ? "已导出并渲染预览" : "已导出文件", "ok");
@@ -1115,16 +2102,45 @@ document.addEventListener("input", (e) => {
   if (target.dataset?.lineText) syncTextFromElement(target);
 });
 
+document.addEventListener("beforeinput", (e) => {
+  const textEl = e.target.closest?.("[data-line-text]");
+  if (!textEl || !canEdit()) return;
+  beginTextHistory();
+});
+
 document.addEventListener("keydown", (e) => {
   const textEl = e.target.closest?.("[data-line-text]");
   const isEditable = Boolean(textEl) || ["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName);
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
+    if (e.target.id === "search") return;
+    e.preventDefault();
+    if (textEl) syncTextFromElement(textEl);
+    if (e.shiftKey) redoEdit();
+    else undoEdit();
+    return;
+  }
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "y") {
+    if (e.target.id === "search") return;
+    e.preventDefault();
+    if (textEl) syncTextFromElement(textEl);
+    redoEdit();
+    return;
+  }
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
     e.preventDefault();
     saveState(false);
     return;
   }
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "p") {
+    e.preventDefault();
+    if (textEl) syncTextFromElement(textEl);
+    const line = lineById(textEl?.dataset.lineText || activeLineId);
+    if (line) playRange(line.start, line.end, "source");
+    return;
+  }
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "d") {
     e.preventDefault();
+    if (textEl && splitSelectionAsDeleted(textEl)) return;
     if (activeLineId) toggleDelete(activeLineId);
     return;
   }
@@ -1138,12 +2154,6 @@ document.addEventListener("keydown", (e) => {
     $("search").focus();
     return;
   }
-  if (!isEditable && e.key.toLowerCase() === "p") {
-    e.preventDefault();
-    const line = lineById(activeLineId);
-    if (line) playRange(line.start, line.end);
-    return;
-  }
   if (!isEditable && e.key.toLowerCase() === "j") {
     e.preventDefault();
     moveActive(1);
@@ -1153,6 +2163,14 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
     moveActive(-1);
     return;
+  }
+  if (!e.metaKey && !e.ctrlKey && !e.altKey && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+    if (textEl || !isEditable) {
+      e.preventDefault();
+      if (textEl) syncTextFromElement(textEl);
+      moveActive(e.key === "ArrowDown" ? 1 : -1, true);
+      return;
+    }
   }
   if (e.key === "Escape") {
     if ($("search").value) {
@@ -1164,6 +2182,12 @@ document.addEventListener("keydown", (e) => {
   }
   if (!textEl) return;
   const id = textEl.dataset.lineText;
+  if (e.key === "Tab") {
+    e.preventDefault();
+    syncTextFromElement(textEl);
+    moveActive(e.shiftKey ? -1 : 1, true);
+    return;
+  }
   if ((e.key === "Backspace" || e.key === "Delete") && !String(lineById(id)?.text || "").trim()) {
     e.preventDefault();
     removeLine(id, false);
@@ -1187,6 +2211,7 @@ document.addEventListener("paste", (e) => {
   if (!textEl) return;
   if (!canEdit()) return;
   e.preventDefault();
+  beginTextHistory();
   document.execCommand("insertText", false, e.clipboardData.getData("text/plain"));
 });
 
@@ -1195,16 +2220,19 @@ document.addEventListener("click", (e) => {
   if (row) setActive(row.dataset.lineId, false);
   const button = e.target.closest?.("button");
   if (!button) return;
-  if (button.dataset.mediaTab) {
-    activeMediaId = button.dataset.mediaTab;
-    renderMediaTabs();
+  if (button.dataset.reviewFilter) {
+    qaFilter = button.dataset.reviewFilter;
+    renderAll();
     return;
   }
   if (button.dataset.playLine) {
     const line = lineById(button.dataset.playLine);
-    if (line) playRange(line.start, line.end);
+    if (line) playRange(line.start, line.end, "source");
   }
+  if (button.dataset.toggleDelete) toggleDelete(button.dataset.toggleDelete);
   if (button.dataset.insertAfter) insertAfter(button.dataset.insertAfter);
+  if (button.dataset.keepTake) keepTake(button.dataset.keepTake);
+  if (button.dataset.toggleTakeDelete) toggleTakeDelete(button.dataset.toggleTakeDelete);
 });
 
 window.addEventListener("beforeunload", (e) => {
@@ -1241,6 +2269,14 @@ $("reloadBtn").addEventListener("click", () => {
   loadData(currentProjectId, { force: true });
 });
 $("projectSelect").addEventListener("change", (e) => loadData(e.target.value));
+$("candidateModeBtn").addEventListener("click", () => {
+  reviewMode = "candidates";
+  renderAll();
+});
+$("lineModeBtn").addEventListener("click", () => {
+  reviewMode = "lines";
+  renderAll();
+});
 $("showDeleted").addEventListener("click", () => {
   showDeletedOnly = !showDeletedOnly;
   $("showDeleted").classList.toggle("active", showDeletedOnly);
@@ -1250,9 +2286,10 @@ $("prevDeleted").addEventListener("click", () => jumpDeleted(-1));
 $("nextDeleted").addEventListener("click", () => jumpDeleted(1));
 $("restoreSuggested").addEventListener("click", () => {
   if (!requireEdit()) return;
-  const count = state.scriptLines.filter(line => String(line.source || "").startsWith("delete#")).length;
+  const count = state.scriptLines.filter(line => isSuggestedDeleteLine(line)).length;
   if (!confirm(`恢复建议删除线会重置当前所有删除线，并按来源重新标记 ${count} 行。继续？`)) return;
-  state.scriptLines.forEach(line => line.deleted = String(line.source || "").startsWith("delete#"));
+  pushUndoSnapshot("restore-suggested");
+  state.scriptLines.forEach(line => line.deleted = isSuggestedDeleteLine(line));
   setDirty();
   renderAll();
 });
@@ -1260,6 +2297,7 @@ $("clearDeleted").addEventListener("click", () => {
   if (!requireEdit()) return;
   const count = state.scriptLines.filter(line => line.deleted).length;
   if (!confirm(`确定取消全部 ${count} 条删除线？这会暂时保留所有内容，需要保存后才写入磁盘。`)) return;
+  pushUndoSnapshot("clear-deleted");
   state.scriptLines.forEach(line => line.deleted = false);
   setDirty();
   renderAll();

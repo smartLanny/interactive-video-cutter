@@ -16,7 +16,8 @@ SKILL_DIR = Path(__file__).resolve().parents[1]
 TOOLS_DIR = Path(os.environ.get("INTERACTIVE_VIDEO_CUTTER_TOOLS_DIR", Path.home() / ".local/share/interactive-video-cutter"))
 VENV_DIR = Path(os.environ.get("INTERACTIVE_VIDEO_CUTTER_VENV", TOOLS_DIR / ".venv"))
 BUNDLED_TRANSCRIBE = SKILL_DIR / "scripts" / "transcribe_qwen3.py"
-QWEN_ASR_CACHE_NAME = "models--Qwen--Qwen3-ASR-1.7B"
+QWEN_ASR_FAST_CACHE_NAME = "models--Qwen--Qwen3-ASR-0.6B"
+QWEN_ASR_QUALITY_CACHE_NAME = "models--Qwen--Qwen3-ASR-1.7B"
 QWEN_ALIGNER_CACHE_NAME = "models--Qwen--Qwen3-ForcedAligner-0.6B"
 
 
@@ -162,7 +163,9 @@ def status() -> dict:
             "app": str(SKILL_DIR / "assets/review_tool/interactive_review_app.html"),
         },
         "models": {
-            "qwen3_asr": str(find_hf_model_cache(QWEN_ASR_CACHE_NAME) or ""),
+            "qwen3_asr": str(find_hf_model_cache(QWEN_ASR_QUALITY_CACHE_NAME) or ""),
+            "qwen3_asr_fast": str(find_hf_model_cache(QWEN_ASR_FAST_CACHE_NAME) or ""),
+            "qwen3_asr_quality": str(find_hf_model_cache(QWEN_ASR_QUALITY_CACHE_NAME) or ""),
             "qwen3_forced_aligner": str(find_hf_model_cache(QWEN_ALIGNER_CACHE_NAME) or ""),
             "cacheRoots": [str(root) for root in hf_cache_roots()],
         },
@@ -184,7 +187,8 @@ def main() -> int:
     asr_ready = bool(report["pythonRuntime"]["mlx_qwen3_asr"] or report["pythonRuntime"]["qwen_asr"])
     ok = bool(report["commands"]["ffmpeg"] and report["commands"]["ffprobe"] and report["transcription"]["transcribeHelper"] and asr_ready)
     report["ok"] = ok
-    report["offlineReady"] = bool(ok and report["models"]["qwen3_asr"] and report["models"]["qwen3_forced_aligner"])
+    has_asr_model = bool(report["models"]["qwen3_asr_fast"] or report["models"]["qwen3_asr_quality"])
+    report["offlineReady"] = bool(ok and has_asr_model and report["models"]["qwen3_forced_aligner"])
     missing: list[str] = []
     if not report["commands"]["ffmpeg"]:
         missing.append("ffmpeg")
@@ -194,7 +198,7 @@ def main() -> int:
         missing.append("bundled-transcribe-helper")
     if not asr_ready:
         missing.append("python-asr-package")
-    if not report["models"]["qwen3_asr"]:
+    if not has_asr_model:
         missing.append("qwen3-asr-model-cache")
     if not report["models"]["qwen3_forced_aligner"]:
         missing.append("qwen3-forced-aligner-cache")

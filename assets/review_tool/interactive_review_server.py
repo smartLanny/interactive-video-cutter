@@ -23,7 +23,12 @@ DEFAULT_MANIFEST = ROOT / "interactive_review_manifest.json"
 APP_HTML = ROOT / "interactive_review_app.html"
 END_PUNCT = set("。！？!?；;")
 SOFT_PUNCT = set("，,、")
+VISIBLE_SUBTITLE_PUNCT = "，,、；;：:。！？!?"
+DECIMAL_DOT_TOKEN = "__DECIMAL_DOT__"
+TECH_DOT_TOKEN = "__TECH_DOT__"
+RATIO_COLON_TOKEN = "__RATIO_COLON__"
 LOCK_TTL_SECONDS = 75
+RENDER_AUDIO_FADE_SECONDS = 0.03
 PROJECTS: dict[str, "ProjectConfig"] = {}
 DEFAULT_PROJECT_ID = ""
 MANIFEST_PATH = DEFAULT_MANIFEST
@@ -325,16 +330,20 @@ def media_type_for(path: Path) -> str:
 
 
 def media_items(project: ProjectConfig) -> list[dict]:
-    items = [{
-        "id": "source",
-        "label": "原始视频" if project.media_type == "video" else "原始音频",
-        "type": project.media_type,
-        "url": f"/media/{project.id}/source",
-    }]
+    draft_is_audio = bool(project.draft_media and media_type_for(project.draft_media) == "audio")
+    if project.media_type == "video" and draft_is_audio:
+        items = []
+    else:
+        items = [{
+            "id": "source",
+            "label": "原始视频" if project.media_type == "video" else "原始音频",
+            "type": project.media_type,
+            "url": f"/media/{project.id}/source",
+        }]
     if project.draft_media:
         items.append({
             "id": "draft",
-            "label": "草案视频" if media_type_for(project.draft_media) == "video" else "草案音频",
+            "label": "草案视频" if media_type_for(project.draft_media) == "video" else "审阅音频",
             "type": media_type_for(project.draft_media),
             "url": f"/media/{project.id}/draft",
         })
@@ -439,6 +448,7 @@ def default_state(project: ProjectConfig) -> dict:
         "cues": parse_srt(project.draft_srt),
         "scriptLines": build_script_lines(project, deletes),
         "useScriptLines": True,
+        "referenceReview": None,
         "updatedAt": None,
     }
 
@@ -454,6 +464,8 @@ def load_state(project: ProjectConfig) -> dict:
                 state["cues"] = saved["cues"]
             if saved.get("scriptLines"):
                 state["scriptLines"] = saved["scriptLines"]
+            if "referenceReview" in saved:
+                state["referenceReview"] = saved.get("referenceReview")
             state["useScriptLines"] = saved.get("useScriptLines", state.get("useScriptLines", True))
             state["updatedAt"] = saved.get("updatedAt")
         except Exception:
@@ -468,6 +480,17 @@ def text_unit(char: str) -> bool:
 def clean_line_text(value: str) -> str:
     value = re.sub(r"\s+", " ", value).strip()
     value = re.sub(r"\s+([，。！？；、,.!?;])", r"\1", value)
+    value = re.sub(r"(?<=\d)\.(?=\d)", DECIMAL_DOT_TOKEN, value)
+    value = re.sub(r"(?<=[A-Za-z])\.(?=\d)", TECH_DOT_TOKEN, value)
+    value = re.sub(r"(?<=\d):(?=\d)", RATIO_COLON_TOKEN, value)
+    value = re.sub(rf"([A-Za-z0-9%])\s*[{re.escape(VISIBLE_SUBTITLE_PUNCT)}]\s*(?=[A-Za-z0-9])", r"\1 ", value)
+    value = re.sub(rf"\s*([{re.escape(VISIBLE_SUBTITLE_PUNCT)}])\s*", "", value)
+    value = value.replace(".", "")
+    value = value.replace(TECH_DOT_TOKEN, ".")
+    value = value.replace(DECIMAL_DOT_TOKEN, ".")
+    value = value.replace(RATIO_COLON_TOKEN, ":")
+    value = re.sub(r"\s+", " ", value).strip()
+    value = re.sub(r"(?<=[\u3400-\u9fff])\s+(?=[\u3400-\u9fff])", "", value)
     return value
 
 
@@ -745,7 +768,7 @@ def build_script_lines(project: ProjectConfig, deletes: list[dict] | None = None
 def write_srt(cues: list[dict], path: Path) -> None:
     lines: list[str] = []
     for i, cue in enumerate(sorted(cues, key=lambda c: (float(c["start"]), float(c["end"]))), 1):
-        text = str(cue.get("text", "")).strip()
+        text = clean_line_text(cue.get("text", ""))
         if not text:
             continue
         start = float(cue["start"])
@@ -886,7 +909,7 @@ def script_delete_intervals(lines: list[dict]) -> list[dict]:
     intervals: list[dict] = []
     for line in lines:
         text = clean_line_text(line.get("text", ""))
-        if not line.get("deleted") or not text:
+        if not line.get("deleted"):
             continue
         start = float(line.get("start", 0))
         end = float(line.get("end", start))
@@ -897,7 +920,7 @@ def script_delete_intervals(lines: list[dict]) -> list[dict]:
             "start": start,
             "end": end,
             "duration": end - start,
-            "summary": text,
+            "summary": text or "手动删除",
             "reason": line.get("source", ""),
             "source": "scriptLines",
         })
@@ -949,19 +972,39 @@ def alignment_units_for_cues(cues: list[dict]) -> list[dict]:
         text = clean_line_text(cue.get("text", ""))
         start = float(cue.get("start", 0))
         end = max(start + 0.05, float(cue.get("end", start + 0.05)))
-        chars = [ch for ch in text if ch.strip()]
-        if not chars:
+        text_units = alignment_text_units(text)
+        if not text_units:
             continue
-        step = (end - start) / len(chars)
-        for i, ch in enumerate(chars):
+        step = (end - start) / len(text_units)
+        for i, unit_text in enumerate(text_units):
             units.append({
                 "cueIndex": cue_index,
                 "unitIndex": i + 1,
-                "text": ch,
+                "text": unit_text,
                 "start": round(start + step * i, 3),
                 "end": round(start + step * (i + 1), 3),
                 "timing": "line-interpolated",
             })
+    return units
+
+
+def alignment_text_units(text: str) -> list[str]:
+    units: list[str] = []
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        if not ch.strip():
+            i += 1
+            continue
+        if re.match(r"[A-Za-z0-9]", ch):
+            start = i
+            i += 1
+            while i < len(text) and re.match(r"[A-Za-z0-9.+%_-]", text[i]):
+                i += 1
+            units.append(text[start:i])
+            continue
+        units.append(ch)
+        i += 1
     return units
 
 
@@ -1059,6 +1102,10 @@ def validate_keep_segments(segments: list[dict], intervals: list[dict] | None = 
             raise ValueError(f"keep segment {i} has non-positive source duration")
         if out_end <= out_start:
             raise ValueError(f"keep segment {i} has non-positive timeline duration")
+        if i == 1 and abs(out_start) > 0.02:
+            raise ValueError("first keep segment does not start at timeline zero")
+        if i > 1 and abs(out_start - previous_out) > 0.02:
+            raise ValueError(f"keep segment {i} output timeline has a gap or overlap")
         if out_start + 0.02 < previous_out:
             raise ValueError(f"keep segment {i} output timeline is not monotonic")
         if abs((out_end - out_start) - (end - start)) > 0.05:
@@ -1204,12 +1251,13 @@ def render_audio(project: ProjectConfig, segments: list[dict], output: Path) -> 
         duration = float(seg["end"]) - float(seg["start"])
         if duration < 0.08:
             continue
-        fade_out = max(0.0, duration - 0.025)
+        fade_out = max(0.0, duration - RENDER_AUDIO_FADE_SECONDS)
         label = f"a{i}"
         parts.append(
             f"[0:a]atrim=start={seg['start']:.3f}:end={seg['end']:.3f},"
             f"asetpts=PTS-STARTPTS,"
-            f"afade=t=in:st=0:d=0.025,afade=t=out:st={fade_out:.3f}:d=0.025"
+            f"afade=t=in:st=0:d={RENDER_AUDIO_FADE_SECONDS:.3f},"
+            f"afade=t=out:st={fade_out:.3f}:d={RENDER_AUDIO_FADE_SECONDS:.3f}"
             f"[{label}]"
         )
         labels.append(f"[{label}]")
@@ -1246,13 +1294,17 @@ def render_video(project: ProjectConfig, segments: list[dict], output: Path) -> 
             continue
         v_label = f"v{i}"
         a_label = f"a{i}"
+        fade_out = max(0.0, duration - RENDER_AUDIO_FADE_SECONDS)
         parts.append(
             f"[0:v]trim=start={seg['start']:.3f}:end={seg['end']:.3f},"
             f"setpts=PTS-STARTPTS[{v_label}]"
         )
         parts.append(
             f"[0:a]atrim=start={seg['start']:.3f}:end={seg['end']:.3f},"
-            f"asetpts=PTS-STARTPTS[{a_label}]"
+            f"asetpts=PTS-STARTPTS,"
+            f"afade=t=in:st=0:d={RENDER_AUDIO_FADE_SECONDS:.3f},"
+            f"afade=t=out:st={fade_out:.3f}:d={RENDER_AUDIO_FADE_SECONDS:.3f}"
+            f"[{a_label}]"
         )
         labels.append(f"[{v_label}][{a_label}]")
     if not labels:
@@ -1447,7 +1499,13 @@ def send_no_content(handler: BaseHTTPRequestHandler) -> None:
     handler.end_headers()
 
 
-def send_file(handler: BaseHTTPRequestHandler, path: Path, *, include_body: bool = True) -> None:
+def send_file(
+    handler: BaseHTTPRequestHandler,
+    path: Path,
+    *,
+    include_body: bool = True,
+    cache_control: str | None = None,
+) -> None:
     if not path.exists():
         handler.send_error(404)
         return
@@ -1467,6 +1525,8 @@ def send_file(handler: BaseHTTPRequestHandler, path: Path, *, include_body: bool
     handler.send_header("Content-Type", content_type(path))
     handler.send_header("Accept-Ranges", "bytes")
     handler.send_header("Content-Length", str(length))
+    if cache_control:
+        handler.send_header("Cache-Control", cache_control)
     if range_header:
         handler.send_header("Content-Range", f"bytes {start}-{end}/{size}")
     handler.end_headers()
@@ -1493,7 +1553,7 @@ class Handler(BaseHTTPRequestHandler):
             send_no_content(self)
             return True
         if parsed.path in {"/", "/interactive_review_app.html"}:
-            send_file(self, APP_HTML, include_body=include_body)
+            send_file(self, APP_HTML, include_body=include_body, cache_control="no-store")
             return True
         if parsed.path.startswith("/media/"):
             parts = [unquote(part) for part in parsed.path.split("/") if part]
