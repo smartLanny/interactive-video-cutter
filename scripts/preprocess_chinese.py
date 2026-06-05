@@ -1015,6 +1015,95 @@ def semantic_prefix_score(fragment_norm: str, reference_norm: str) -> float:
     return difflib.SequenceMatcher(None, fragment_norm, window[: len(fragment_norm)]).ratio()
 
 
+def line_block_norm(lines: list[dict[str, Any]]) -> str:
+    return normalize_for_semantic_review("".join(str(line.get("text") or "") for line in lines))
+
+
+def spoken_block_candidates_before(lines: list[dict[str, Any]], index: int) -> list[list[dict[str, Any]]]:
+    current_start = float(lines[index].get("start") or 0.0)
+    right_start = current_start
+    block: list[dict[str, Any]] = []
+    candidates: list[list[dict[str, Any]]] = []
+    for previous in reversed(lines[max(0, index - 8) : index]):
+        if previous.get("deleted") or previous.get("lineType") == "pause":
+            break
+        prev_start = float(previous.get("start") or 0.0)
+        prev_end = float(previous.get("end") or prev_start)
+        if right_start - prev_end > 1.5:
+            break
+        block.insert(0, previous)
+        right_start = prev_start
+        norm = line_block_norm(block)
+        if len(norm) >= 8:
+            candidates.append(list(block))
+        if len(block) >= 4 or current_start - prev_start > 12.0:
+            break
+    return candidates
+
+
+def spoken_block_candidates_from(lines: list[dict[str, Any]], index: int) -> list[list[dict[str, Any]]]:
+    block: list[dict[str, Any]] = []
+    candidates: list[list[dict[str, Any]]] = []
+    previous_end: float | None = None
+    start = float(lines[index].get("start") or 0.0)
+    for line in lines[index : min(len(lines), index + 4)]:
+        if line.get("deleted") or line.get("lineType") == "pause":
+            break
+        line_start = float(line.get("start") or 0.0)
+        line_end = float(line.get("end") or line_start)
+        if previous_end is not None and line_start - previous_end > 1.5:
+            break
+        block.append(line)
+        previous_end = line_end
+        norm = line_block_norm(block)
+        if len(norm) >= 8:
+            candidates.append(list(block))
+        if line_end - start > 12.0:
+            break
+    return candidates
+
+
+def later_block_repeats_previous(previous_block: list[dict[str, Any]], later_block: list[dict[str, Any]]) -> bool:
+    previous_norm = line_block_norm(previous_block)
+    later_norm = line_block_norm(later_block)
+    if len(previous_norm) < 8 or len(later_norm) < 8:
+        return False
+    length_ratio = len(later_norm) / max(1, len(previous_norm))
+    if length_ratio < 0.78 or length_ratio > 2.15:
+        return False
+    if previous_norm in later_norm:
+        return True
+    score = difflib.SequenceMatcher(None, previous_norm, later_norm).ratio()
+    return score >= 0.86
+
+
+def mark_nearby_later_repeated_takes(lines: list[dict[str, Any]]) -> None:
+    for index, line in enumerate(lines):
+        if line.get("deleted") or line.get("lineType") == "pause":
+            continue
+        previous_candidates = spoken_block_candidates_before(lines, index)
+        if not previous_candidates:
+            continue
+        later_candidates = spoken_block_candidates_from(lines, index)
+        for later_block in sorted(later_candidates, key=lambda block: len(line_block_norm(block)), reverse=True):
+            for previous_block in sorted(previous_candidates, key=lambda block: len(line_block_norm(block)), reverse=True):
+                if not later_block_repeats_previous(previous_block, later_block):
+                    continue
+                for previous in previous_block:
+                    previous["deleted"] = True
+                    previous["takeRole"] = previous.get("takeRole") or "alternate"
+                    append_flag(previous, "duplicate-take")
+                    append_flag(previous, "semantic-predelete")
+                    append_source(previous, "suggested-delete:later-repeat-take")
+                for kept in later_block:
+                    append_flag(kept, "later-repeat-keep")
+                    append_source(kept, "suggested-keep:later-repeat-take")
+                break
+            else:
+                continue
+            break
+
+
 def mark_reference_false_starts(lines: list[dict[str, Any]]) -> None:
     for index, line in enumerate(lines):
         if line.get("deleted") or line.get("lineType") == "pause" or line_ref_index(line) is not None:
@@ -1073,6 +1162,7 @@ def mark_nearby_duplicate_fragments(lines: list[dict[str, Any]]) -> None:
 
 
 def mark_semantic_predeletes(lines: list[dict[str, Any]]) -> None:
+    mark_nearby_later_repeated_takes(lines)
     mark_reference_false_starts(lines)
     mark_nearby_duplicate_fragments(lines)
 

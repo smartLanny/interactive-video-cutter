@@ -169,6 +169,54 @@ def assert_preprocess_regressions(root: Path) -> None:
     if not repeated[0].get("deleted") or repeated[1].get("deleted") or repeated[1].get("takeRole") != "primary":
         raise RuntimeError(f"repeated take should prefer later close-quality take: {repeated}")
 
+    later_unmatched_repeat = [
+        {
+            "id": 111,
+            "start": 160.0,
+            "end": 162.0,
+            "text": "其实这次散热的内部变化不大",
+            "deleted": False,
+            "_referenceIndex": 20,
+            "referenceIndex": 20,
+            "referenceText": "其实这次散热的内部变化不大依然是三风扇大面积均热板加液金的设计",
+            "takeRole": "primary",
+        },
+        {
+            "id": 112,
+            "start": 162.0,
+            "end": 163.0,
+            "text": "依然是三风扇",
+            "deleted": False,
+            "_referenceIndex": 20,
+            "referenceIndex": 20,
+            "referenceText": "其实这次散热的内部变化不大依然是三风扇大面积均热板加液金的设计",
+            "takeRole": "primary",
+        },
+        {
+            "id": 113,
+            "start": 163.0,
+            "end": 165.0,
+            "text": "大面积均热板加液金的设计",
+            "deleted": False,
+            "_referenceIndex": 20,
+            "referenceIndex": 20,
+            "referenceText": "其实这次散热的内部变化不大依然是三风扇大面积均热板加液金的设计",
+            "takeRole": "primary",
+        },
+        {
+            "id": 114,
+            "start": 166.0,
+            "end": 170.5,
+            "text": "其实啊这次散热的内部变化不大依然是三风扇大面积均热板加液晶的设计",
+            "deleted": False,
+        },
+    ]
+    module.mark_semantic_predeletes(later_unmatched_repeat)
+    if not all(line.get("deleted") for line in later_unmatched_repeat[:3]) or later_unmatched_repeat[3].get("deleted"):
+        raise RuntimeError(f"later unmatched repeat should delete earlier take: {later_unmatched_repeat}")
+    if "later-repeat-keep" not in later_unmatched_repeat[3].get("qaFlags", []):
+        raise RuntimeError(f"later repeat keep was not flagged: {later_unmatched_repeat}")
+
     gap_lines = [
         {"id": 201, "start": 0.0, "end": 2.0, "text": "前面一段有效口播", "deleted": False},
         {"id": 202, "start": 24.5, "end": 27.0, "text": "后面一段有效口播", "deleted": False},
