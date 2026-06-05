@@ -29,7 +29,9 @@ interactive-video-cutter/
 │   ├── import_review_project.py
 │   ├── preprocess_chinese.py
 │   ├── start_review_server.py
-│   └── transcribe_qwen3.py
+│   ├── transcribe_qwen3.py
+│   ├── transcribe_volcengine.py
+│   └── asr_ab_compare.py
 └── docs/
 ```
 
@@ -45,7 +47,8 @@ interactive-video-cutter/
    - For video inputs, creates `<workdir>/edit/audio/<media-stem>_asr.m4a` and uses that small AAC proxy for ASR and browser review playback.
    - Passes the probed source-media duration into the manifest so source-tail timing is not truncated to the last transcript line.
    - Runs ASR unless `--transcript-json --skip-transcribe` is provided.
-   - Optionally builds `<workdir>/edit/asr_context.txt` from reference-script terminology when `--asr-context` or `--asr-context-file` is used. The default first pass does not use global ASR context.
+   - Optionally builds `<workdir>/edit/asr_context.txt` from reference-script terminology. For local Qwen, `--asr-context` or `--asr-context-file` is opt-in and the default first pass does not use global ASR context. For `--provider volcengine`, reference-derived context is enabled by default unless `--no-asr-context` is used.
+   - Supports `--provider qwen` for local default transcription and `--provider volcengine` for Volcengine Seed ASR 2.0 standard submit/query comparison. Volcengine reads `VOLCENGINE_ASR_API_KEY` from the environment and uploads the whole selected audio as `audio.data` unless URL mode is requested.
    - Calls `import_review_project.py` to create manifest and state.
    - Writes `<workdir>/edit/takes_packed.md` as a compact phrase-level transcript for agent review.
    - Writes `<workdir>/edit/reference_review_report.md` and `<workdir>/edit/semantic_review_packets.jsonl`. Long-form review should use Direct EDL plus take-clustering validation as the primary review path; packets are a residual QA surface.
@@ -73,25 +76,38 @@ interactive-video-cutter/
    - Uses 180 second chunks for media at or above 600 seconds, caching chunks in `<media-stem>.chunks/`.
    - Accepts `--context` / `--context-file`; transcript and chunk caches include the context hash, including the empty no-context hash.
 
-6. `scripts/preprocess_chinese.py`
+6. `scripts/transcribe_volcengine.py`
+   - Calls Volcengine Seed ASR 2.0 standard submit/query with resource id `volc.seedasr.auc`.
+   - Reads only `VOLCENGINE_ASR_API_KEY` or the configured `--api-key-env`; never hard-code keys in commands, docs, tests, or fixtures.
+   - Sends whole local audio as base64 `audio.data` by default; `--audio-url --no-data-upload` keeps URL-only mode available.
+   - Accepts `--context-file` and serializes it into `request.corpus.context` as hotwords by default.
+   - Writes the same transcript JSON shape as local ASR: `text`, `segments`, `words`, and `metadata`.
+
+7. `scripts/asr_ab_compare.py`
+   - Compares local and cloud transcript JSON files for speed, text length, term hits, reference-fragment matches, and suspicious missing segments.
+   - Use it on short targeted windows before deciding whether a full cloud run is worth the cost/time.
+
+8. `scripts/preprocess_chinese.py`
    - Converts ASR `words`, `segments`, or `text` into timed review lines.
    - Uses reference text to correct terms, numbers, model names, punctuation, and sentence breaks.
    - Uses reference matches to mark repeated takes for deletion and split long comma-heavy review lines.
    - Flags long timestamp gaps between meaningful speech lines as `asr-timestamp-gap` so pause rows remain visible for focused review.
    - Keeps audio/video ASR as source of truth; reference text must not add unspoken content.
 
-7. `assets/review_tool/interactive_review_server.py`
+9. `assets/review_tool/interactive_review_server.py`
    - Serves the local review page and media.
    - Saves `interactive_review_state.json`.
    - Provides editing locks.
    - Exports SRT, CSV, JSON, alignment sidecars, DaVinci handoff, and FCPXML.
    - Renders preview/output media when requested.
 
-8. `assets/review_tool/interactive_review_app.html`
+10. `assets/review_tool/interactive_review_app.html`
    - Single-file browser UI.
    - One sentence per line.
    - Struck-through lines are cut.
    - Keyboard-first editing.
+   - Renders `qaFlags` as colored chips and provides `全部`, `重点`, `ASR空窗`, `密集数字`, `术语风险`, and `删除建议` filters.
+   - Search includes visible text, source notes, raw flags, and Chinese risk labels.
 
 ## Data Model
 
@@ -165,7 +181,19 @@ Long-media ASR dry run:
 
 ```bash
 python3 scripts/transcribe_qwen3.py --help
-python3 scripts/create_review_project.py --help | rg 'chunk|audio-proxy|no-chunk'
+python3 scripts/transcribe_volcengine.py --help
+python3 scripts/create_review_project.py --help | rg 'chunk|audio-proxy|no-chunk|provider|volcengine'
+```
+
+Volcengine A/B transcript comparison:
+
+```bash
+python3 scripts/asr_ab_compare.py \
+  --local /path/to/local-qwen.json \
+  --cloud /path/to/volcengine.json \
+  --terms-file /path/to/asr_context.txt \
+  --reference-file /path/to/script.md \
+  --out /path/to/asr_ab_compare.json
 ```
 
 Review workflow smoke test:
@@ -199,7 +227,8 @@ rg -n '(/Users/|/Volumes/|gho_|HF_TOKEN\s*=|HUGGINGFACE_HUB_TOKEN\s*=|password\s
 - Keep public-internet access out of scope; the server assumes a trusted LAN.
 - Do not silently expand `allowedRoots`.
 - Do not overwrite an existing review state unless the user explicitly asks.
-- Do not make external AI APIs default automatic writers until they pass fixture gates for false deletes, unsafe reference insertion, and missed `needs_human` items.
+- Do not make external AI APIs default automatic writers until they pass fixture gates for false deletes, unsafe reference insertion, and missed `needs_human` items. Volcengine ASR is a transcription comparison provider, not a state writer.
+- Do not commit API keys, request headers, real cloud transcript outputs, or project-specific A/B reports.
 - When changing export behavior, test both audio and video paths.
 - When changing text preprocessing or AI polish, test protected terms such as `618`, `DLSS 4.5`, `RTX 5070 Ti`, `HDMI2.1`, `DP1.4`, plus units such as `W`, `℃`, `Hz`, `GHz`, `GB`, `Wh`, and `nits`.
 

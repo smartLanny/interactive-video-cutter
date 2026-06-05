@@ -8,7 +8,7 @@ This is not a SaaS app. It is designed to run on a trusted local editing/render 
 
 - Imports audio or video from a local/NAS path.
 - For video inputs, creates a lightweight AAC audio proxy for ASR and web review while keeping the original video as the edit/export source.
-- Runs local Qwen3-ASR, caches transcript JSON, and writes `edit/takes_packed.md`, `edit/reference_review_report.md`, and compact review artifacts for agent review.
+- Runs local Qwen3-ASR by default, optionally runs Volcengine Seed ASR 2.0 standard for cloud A/B comparison, caches transcript JSON, and writes `edit/takes_packed.md`, `edit/reference_review_report.md`, and compact review artifacts for agent review.
 - Uses the reference script to fix terms, numbers, model names, punctuation, and Chinese sentence breaks.
 - Runs an AI polish stage before browser review so high-confidence cleanup is already written into `interactive_review_state.json`.
 - Opens a browser final-review page with one sentence per line.
@@ -54,7 +54,31 @@ ASR profiles are available on project creation and direct transcription:
 - `--asr-profile fast`: `Qwen/Qwen3-ASR-0.6B`, faster and useful for full-length long narration drafts.
 - `--asr-profile quality`: `Qwen/Qwen3-ASR-1.7B`, slower but more accurate for dense technical ranges or final local reruns.
 
-ASR terminology context is opt-in. `create_review_project.py --asr-context` writes `<workdir>/edit/asr_context.txt` from a compact reference-derived term list and passes it to Qwen3-ASR; `--asr-context-file` passes an explicit context file. Do not use global context as the default for long narration: it can bias or truncate first-pass ASR. Prefer no-context `fast` for the first transcript, then rerun dense technical ranges with `quality` plus a short local context when needed. Transcript caches include the context hash so context and no-context runs do not silently share outputs.
+ASR terminology context is provider-specific. Local Qwen terminology context is opt-in: `create_review_project.py --asr-context` writes `<workdir>/edit/asr_context.txt` from a compact reference-derived term list and passes it to Qwen3-ASR; `--asr-context-file` passes an explicit context file. Do not use global context as the default local first pass for long narration: it can bias or truncate chunked decoding. Prefer no-context `fast` for the first local transcript, then rerun dense technical ranges with `quality` plus a short local context when needed. Transcript caches include the context hash so context and no-context runs do not silently share outputs.
+
+Volcengine Seed ASR 2.0 standard is available for cloud A/B comparison:
+
+```bash
+export VOLCENGINE_ASR_API_KEY="..."
+python3 scripts/create_review_project.py \
+  --media /path/to/talk.m4a \
+  --reference /path/to/script.md \
+  --workdir /path/to/review-work-cloud \
+  --provider volcengine
+```
+
+For `--provider volcengine`, reference-derived context is enabled by default unless `--no-asr-context` is passed. The script uploads the selected audio as whole-file `audio.data` when `--volcengine-audio-url` is omitted, and uses the standard submit/query resource `volc.seedasr.auc`. Use `--volcengine-audio-url` plus `--volcengine-no-data-upload` only when URL mode is required. If Python cannot verify a local proxy certificate chain, prefer `--volcengine-ca-bundle`; `--volcengine-insecure-tls` is only for short local diagnostics. Never commit or print API keys.
+
+Compare local and cloud transcripts:
+
+```bash
+python3 scripts/asr_ab_compare.py \
+  --local /path/to/local-qwen.json \
+  --cloud /path/to/volcengine.json \
+  --terms-file /path/to/review-work/edit/asr_context.txt \
+  --reference-file /path/to/script.md \
+  --out /path/to/review-work/edit/asr_ab_compare.json
+```
 
 ## Quick Start
 
@@ -138,6 +162,9 @@ The page shows the polished script as editable lines:
 - One sentence per line.
 - Struck-through lines are cut.
 - Kept lines remain in the edited output.
+- QA flags render as colored chips instead of raw gray text.
+- Use `重点`, `ASR空窗`, `密集数字`, `术语风险`, and `删除建议` filters to decide what to listen to first.
+- Search matches visible text, source notes, raw flags, and Chinese risk labels.
 - Text edits are saved into `interactive_review_state.json`.
 - A project lock prevents two reviewers from silently overwriting each other.
 - Video projects use the extracted audio proxy for browser review; the original video remains the export/XML source.
@@ -158,8 +185,8 @@ Useful shortcuts:
 For video files, the workflow is:
 
 1. FFmpeg extracts a lightweight AAC audio proxy from the source video for ASR and browser audio review.
-2. Qwen3-ASR produces transcript text and word-level timing when available. The default first pass does not use global ASR context.
-3. Optional targeted reruns may pass a short terminology context for dense technical ranges.
+2. Qwen3-ASR produces transcript text and word-level timing when available. The default local first pass does not use global ASR context.
+3. Optional targeted local reruns may pass a short terminology context for dense technical ranges; optional Volcengine standard A/B runs use reference-derived context by default.
 4. `edit/takes_packed.md` gives agents a compact transcript reading view.
 5. Codex middle AI polish backs up `interactive_review_state.json`, then writes high-confidence deletes, term/number/unit fixes, and safe line cleanup directly into state.
 6. Direct EDL plus take-clustering validate the polish for missing-reference gaps, ASR timestamp gaps, orphan tails, time overlaps, repeated-take chains, and dense metric/protected-term runs.

@@ -16,6 +16,7 @@ from preprocess_chinese import build_semantic_review_packets, cleanup_text, refe
 SKILL_DIR = Path(__file__).resolve().parents[1]
 BOOTSTRAP = Path(__file__).resolve().parent / "bootstrap.py"
 IMPORT_PROJECT = Path(__file__).resolve().parent / "import_review_project.py"
+TRANSCRIBE_VOLCENGINE = Path(__file__).resolve().parent / "transcribe_volcengine.py"
 ASR_PROFILE_MODELS = {
     "fast": "Qwen/Qwen3-ASR-0.6B",
     "quality": "Qwen/Qwen3-ASR-1.7B",
@@ -235,6 +236,7 @@ def transcribe(
     workdir: Path,
     status: dict,
     language: str,
+    provider: str,
     backend: str,
     asr_profile: str,
     model: str,
@@ -243,7 +245,45 @@ def transcribe(
     no_chunk: bool = False,
     output_stem: str | None = None,
     context_file: Path | None = None,
+    volcengine_audio_url: str = "",
+    volcengine_no_data_upload: bool = False,
+    volcengine_context_mode: str = "hotwords",
+    volcengine_ca_bundle: Path | None = None,
+    volcengine_insecure_tls: bool = False,
 ) -> Path:
+    edit_dir = workdir / "edit"
+    if provider == "volcengine":
+        transcript_stem = output_stem or media.stem
+        cmd = [
+            sys.executable,
+            str(TRANSCRIBE_VOLCENGINE),
+            str(media),
+            "--edit-dir",
+            str(edit_dir),
+            "--output-stem",
+            transcript_stem,
+            "--language",
+            language,
+        ]
+        if context_file:
+            cmd.extend(["--context-file", str(context_file)])
+        if volcengine_audio_url:
+            cmd.extend(["--audio-url", volcengine_audio_url])
+        if volcengine_no_data_upload:
+            cmd.append("--no-data-upload")
+        if volcengine_context_mode:
+            cmd.extend(["--context-mode", volcengine_context_mode])
+        if volcengine_ca_bundle:
+            cmd.extend(["--ca-bundle", str(volcengine_ca_bundle)])
+        if volcengine_insecure_tls:
+            cmd.append("--insecure-tls")
+        print("+", " ".join(cmd), file=sys.stderr)
+        subprocess.run(cmd, check=True)
+        transcript = edit_dir / "transcripts" / f"{output_stem or media.stem}.json"
+        if not transcript.exists():
+            raise SystemExit(f"transcript was not created: {transcript}")
+        return transcript
+
     helper = status.get("transcription", {}).get("transcribeHelper")
     python = status.get("pythonRuntime", {}).get("venvPython") or sys.executable
     if not helper:
@@ -253,7 +293,6 @@ def transcribe(
         raise SystemExit("mlx_qwen3_asr is missing. Run bootstrap.py --install or provide --transcript-json.")
     if backend == "official" and not runtime.get("qwen_asr"):
         raise SystemExit("qwen_asr is missing. Run bootstrap.py --install or provide --transcript-json.")
-    edit_dir = workdir / "edit"
     cmd = [
         python,
         helper,
@@ -545,6 +584,7 @@ def main() -> int:
     parser.add_argument("--project-id", help="Stable project id; defaults to a slug from title/media")
     parser.add_argument("--title", default="", help="Human-readable project title")
     parser.add_argument("--language", default="zh")
+    parser.add_argument("--provider", choices=["qwen", "volcengine"], default="qwen", help="ASR provider; qwen uses local Qwen3-ASR, volcengine uses Seed ASR 2.0 standard submit/query")
     parser.add_argument("--backend", default="mlx" if platform.system() == "Darwin" else "official")
     parser.add_argument("--asr-profile", choices=ASR_PROFILE_CHOICES, default=DEFAULT_ASR_PROFILE, help="auto=fast for long media and quality for short media; fast=Qwen3-ASR-0.6B, quality=Qwen3-ASR-1.7B")
     parser.add_argument("--model", default=os.environ.get("QWEN3_ASR_MODEL", ""), help="Override --asr-profile with an explicit Qwen model id")
@@ -552,9 +592,15 @@ def main() -> int:
     parser.add_argument("--chunk-threshold-seconds", type=float, help="Use chunked ASR when media duration is at least this many seconds")
     parser.add_argument("--no-chunk-transcribe", action="store_true", help="Disable chunked ASR and transcribe whole extracted audio")
     parser.add_argument("--no-audio-proxy", action="store_true", help="Pass video files directly to ASR instead of extracting a small AAC audio proxy")
-    parser.add_argument("--asr-context", action="store_true", help="Generate and pass reference-derived terminology context to ASR; opt-in because global context can bias or truncate ASR")
+    parser.add_argument("--asr-context", action="store_true", help="Generate and pass reference-derived terminology context to ASR; qwen keeps this opt-in, volcengine enables it by default unless --no-asr-context is used")
     parser.add_argument("--no-asr-context", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--asr-context-file", type=Path, help="Pass an explicit terminology context file to ASR; use a separate output stem/edit dir for A/B runs")
+    parser.add_argument("--volcengine-audio-url", default="", help="Optional public audio URL for Volcengine standard submit/query; omitted local files are uploaded as audio.data")
+    parser.add_argument("--volcengine-allow-data-upload", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--volcengine-no-data-upload", action="store_true", help="Require --volcengine-audio-url instead of uploading the local file as audio.data")
+    parser.add_argument("--volcengine-context-mode", choices=["hotwords", "dialog"], default="hotwords", help="How to serialize --asr-context-file into request.corpus.context for Volcengine")
+    parser.add_argument("--volcengine-ca-bundle", type=Path, help="Custom CA bundle for Volcengine HTTPS verification")
+    parser.add_argument("--volcengine-insecure-tls", action="store_true", help="Disable Volcengine HTTPS certificate verification for local proxy diagnostics only")
     parser.add_argument("--refresh-audio-proxy", action="store_true", help="Recreate an existing AAC audio proxy before transcription")
     parser.add_argument("--install-missing", action="store_true", help="Run bootstrap.py --install before transcription")
     parser.add_argument("--skip-transcribe", action="store_true", help="Only create project from existing --transcript-json")
@@ -582,7 +628,8 @@ def main() -> int:
     source_media_type = media_type(media)
     source_duration = probe_duration(media)
     audio_proxy = None
-    asr_context = None if args.no_asr_context else write_asr_context(reference, workdir, args.asr_context, args.asr_context_file)
+    use_reference_asr_context = args.asr_context or args.provider == "volcengine"
+    asr_context = None if args.no_asr_context else write_asr_context(reference, workdir, use_reference_asr_context, args.asr_context_file)
 
     if args.transcript_json:
         transcript = Path(args.transcript_json).expanduser().resolve()
@@ -591,7 +638,7 @@ def main() -> int:
     elif args.skip_transcribe:
         raise SystemExit("--skip-transcribe requires --transcript-json")
     else:
-        status = ensure_bootstrap(args.install_missing)
+        status = ensure_bootstrap(args.install_missing) if args.provider == "qwen" else {}
         transcribe_media = media
         output_stem = None
         if source_media_type == "video" and not args.no_audio_proxy:
@@ -603,6 +650,7 @@ def main() -> int:
             workdir,
             status,
             args.language,
+            args.provider,
             args.backend,
             args.asr_profile,
             args.model,
@@ -611,6 +659,11 @@ def main() -> int:
             args.no_chunk_transcribe,
             output_stem,
             asr_context,
+            args.volcengine_audio_url,
+            args.volcengine_no_data_upload,
+            args.volcengine_context_mode,
+            args.volcengine_ca_bundle,
+            args.volcengine_insecure_tls,
         )
 
     manifest = workdir / "interactive_review_manifest.json"

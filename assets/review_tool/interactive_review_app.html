@@ -243,7 +243,7 @@
   }
   .toolbar {
     display: grid;
-    grid-template-columns: minmax(240px, 1fr) auto auto auto;
+    grid-template-columns: minmax(240px, 1fr) auto auto;
     gap: 12px;
     align-items: center;
     position: sticky;
@@ -261,6 +261,27 @@
     color: var(--muted);
     font-size: 13px;
     white-space: nowrap;
+  }
+  .review-filters {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    min-width: 0;
+  }
+  .review-filters button {
+    padding: 5px 8px;
+    font-size: 12px;
+  }
+  .review-filters .filter-count {
+    margin-left: 4px;
+    color: inherit;
+    opacity: 0.72;
+    font-variant-numeric: tabular-nums;
+  }
+  .toolbar .tool-buttons {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
   }
   .bulk-menu {
     position: relative;
@@ -335,6 +356,31 @@
     text-decoration: line-through;
     color: #7a3030;
   }
+  .line-row.review-focus,
+  .take-row.review-focus {
+    border-left: 4px solid #d92d20;
+    background: #fff7f5;
+  }
+  .line-row.review-asr:not(.review-focus),
+  .take-row.review-asr:not(.review-focus) {
+    border-left: 4px solid #b54708;
+    background: #fff8eb;
+  }
+  .line-row.review-metric:not(.review-focus):not(.review-asr),
+  .take-row.review-metric:not(.review-focus):not(.review-asr) {
+    border-left: 4px solid #1570ef;
+    background: #f5faff;
+  }
+  .line-row.review-term:not(.review-focus):not(.review-asr):not(.review-metric),
+  .take-row.review-term:not(.review-focus):not(.review-asr):not(.review-metric) {
+    border-left: 4px solid #7a2e83;
+    background: #fbf7ff;
+  }
+  .line-row.review-delete-suggestion:not(.review-focus):not(.review-asr):not(.review-metric):not(.review-term),
+  .take-row.review-delete-suggestion:not(.review-focus):not(.review-asr):not(.review-metric):not(.review-term) {
+    border-left: 4px solid #b42318;
+    background: #fffafa;
+  }
   .line-row.pause .line-text {
     color: var(--muted);
     font-style: italic;
@@ -361,9 +407,78 @@
     font-size: 15px;
     line-height: 1.65;
   }
-  .candidate-meta, .qa-flags {
+  .candidate-meta {
     color: var(--muted);
     font-size: 12px;
+  }
+  .qa-flags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-top: 6px;
+    font-size: 12px;
+  }
+  .qa-chip {
+    display: inline-flex;
+    align-items: center;
+    max-width: 100%;
+    min-height: 24px;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    padding: 2px 6px;
+    font-size: 12px;
+    font-weight: 650;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+  }
+  button.qa-chip {
+    white-space: normal;
+    cursor: pointer;
+  }
+  .qa-chip.flag-human {
+    border-color: #fecdca;
+    background: #fff1f0;
+    color: #b42318;
+  }
+  .qa-chip.flag-review {
+    border-color: #fecdd3;
+    background: #fff1f3;
+    color: #be123c;
+  }
+  .qa-chip.flag-polish {
+    border-color: #c7d7fe;
+    background: #eef4ff;
+    color: #3538cd;
+  }
+  .qa-chip.flag-asr {
+    border-color: #fedf89;
+    background: #fffaeb;
+    color: #b54708;
+  }
+  .qa-chip.flag-metric {
+    border-color: #b2ddff;
+    background: #eff8ff;
+    color: #175cd3;
+  }
+  .qa-chip.flag-term-protected {
+    border-color: #d9b8ff;
+    background: #f7efff;
+    color: #7a2e83;
+  }
+  .qa-chip.flag-term-reference {
+    border-color: #99f6e4;
+    background: #f0fdfa;
+    color: #0f766e;
+  }
+  .qa-chip.flag-delete {
+    border-color: #fda29b;
+    background: #fff4f3;
+    color: #b42318;
+  }
+  .qa-chip.flag-neutral {
+    border-color: #d0d5dd;
+    background: #f9fafb;
+    color: #475467;
   }
   .take-row {
     display: grid;
@@ -448,6 +563,7 @@
       overflow-y: auto;
     }
     .filter-info { white-space: normal; }
+    .review-filters, .toolbar .tool-buttons { grid-column: auto; }
     .actions, .line-actions { justify-content: flex-start; }
     .bulk-panel {
       position: static;
@@ -489,12 +605,13 @@
 <main class="review-layout">
   <section class="review-column">
     <div class="toolbar">
-      <input id="search" type="search" placeholder="搜索全文、型号、价格、删点来源">
+      <input id="search" type="search" placeholder="搜索全文、flag、中文风险标签、删点来源">
       <div class="view-toggle" aria-label="审阅模式">
         <button id="candidateModeBtn" type="button">文案候选</button>
         <button id="lineModeBtn" type="button" class="active">全文行</button>
       </div>
       <div class="filter-info" id="filterInfo"></div>
+      <div class="review-filters" id="reviewFilters" aria-label="待审重点过滤"></div>
       <div class="tool-buttons">
         <button id="showDeleted">只看删除线</button>
         <button id="prevDeleted">上一条删除线</button>
@@ -560,11 +677,34 @@ let lockToken = "";
 let lockStatus = { locked: false, heldByMe: false };
 let heartbeatTimer = null;
 let reviewMode = "lines";
+let qaFilter = "all";
 let undoStack = [];
 let redoStack = [];
 let pendingTextSnapshot = false;
 let textHistoryTimer = null;
 const MAX_HISTORY = 80;
+const REVIEW_FILTERS = [
+  { id: "all", label: "全部" },
+  { id: "focus", label: "重点" },
+  { id: "asr-gap", label: "ASR空窗" },
+  { id: "dense-metric", label: "密集数字" },
+  { id: "term-risk", label: "术语风险" },
+  { id: "delete-suggested", label: "删除建议" },
+];
+const QA_FLAG_DEFS = [
+  { keys: ["needs_human", "needs-human"], label: "人工复核", css: "flag-human", category: "focus", filter: "focus", priority: true, search: ["重点", "待审重点", "人审", "人工确认"] },
+  { keys: ["needs-review", "needs_review"], label: "待审重点", css: "flag-review", category: "focus", filter: "focus", priority: true, search: ["复核", "重点审查", "人工听"] },
+  { keys: ["ai-polish-focus"], label: "AI打磨重点", css: "flag-polish", category: "focus", filter: "focus", priority: true, search: ["AI polish", "重点打磨", "改稿重点"] },
+  { keys: ["asr-timestamp-gap"], label: "ASR空窗", css: "flag-asr", category: "asr-gap", filter: "asr-gap", priority: true, search: ["时间戳空窗", "空窗", "断点", "长停顿"] },
+  { keys: ["targeted-quality-asr-fix"], label: "定向ASR修正", css: "flag-asr", category: "focus", filter: "focus", priority: true, search: ["ASR修正", "定向复听", "质量ASR"] },
+  { keys: ["dense-metric-review"], label: "密集数字", css: "flag-metric", category: "dense-metric", filter: "dense-metric", priority: false, search: ["数字风险", "参数密集", "跑分", "规格"] },
+  { keys: ["long-window-review"], label: "长窗口", css: "flag-metric", category: "dense-metric", filter: "dense-metric", priority: false, search: ["长句", "长时间段", "断句风险"] },
+  { keys: ["protected-term-review"], label: "保护术语", css: "flag-term-protected", category: "term-risk", filter: "term-risk", priority: false, search: ["术语风险", "保护词", "专名", "型号"] },
+  { keys: ["term-not-in-reference"], label: "参考外术语", css: "flag-term-reference", category: "term-risk", filter: "term-risk", priority: false, search: ["术语风险", "参考未出现", "参考外", "专名"] },
+  { keys: ["off-reference"], label: "参考外口播", css: "flag-neutral", category: "", filter: "", priority: false, search: ["参考外", "非文案", "off reference"] },
+  { keys: ["suggested-delete", "delete-suggestion", "ai-polish-delete", "pause", "superseded-take"], label: "删除建议", css: "flag-delete", category: "delete-suggested", filter: "delete-suggested", priority: false, search: ["删点", "建议删除", "删除线", "AI删除", "停顿", "旧take"] },
+];
+const REVIEW_ROW_CLASSES = ["review-focus", "review-asr", "review-metric", "review-term", "review-delete-suggestion"];
 
 function makeId(prefix) {
   const value = globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -659,6 +799,166 @@ function escapeHtml(text) {
   return String(text ?? "").replace(/[&<>"']/g, ch => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
   }[ch]));
+}
+
+function normalizeFlagKey(flag) {
+  return String(flag || "").trim().toLowerCase();
+}
+
+function flagDefFor(flag) {
+  const key = normalizeFlagKey(flag);
+  const dashed = key.replace(/_/g, "-");
+  return QA_FLAG_DEFS.find(def => def.keys.includes(key) || def.keys.includes(dashed)) || null;
+}
+
+function inferredFlagCategory(flag) {
+  const key = normalizeFlagKey(flag).replace(/_/g, "-");
+  if (key.includes("timestamp-gap") || key.includes("asr-gap")) return "asr-gap";
+  if (key.includes("metric") || key.includes("dense")) return "dense-metric";
+  if (key.includes("term")) return "term-risk";
+  if (key.includes("delete")) return "delete-suggested";
+  if (key.includes("needs") || key.includes("review") || key.includes("focus")) return "focus";
+  return "";
+}
+
+function flagCategory(flag) {
+  return flagDefFor(flag)?.category || inferredFlagCategory(flag);
+}
+
+function flagFilterId(flag) {
+  const def = flagDefFor(flag);
+  if (def?.filter) return def.filter;
+  return flagCategory(flag) || "";
+}
+
+function flagLabel(flag) {
+  return flagDefFor(flag)?.label || String(flag || "").trim();
+}
+
+function flagCssClass(flag) {
+  const def = flagDefFor(flag);
+  if (def?.css) return def.css;
+  const category = flagCategory(flag);
+  if (category === "asr-gap") return "flag-asr";
+  if (category === "dense-metric") return "flag-metric";
+  if (category === "term-risk") return "flag-term-protected";
+  if (category === "delete-suggested") return "flag-delete";
+  if (category === "focus") return "flag-review";
+  return "flag-neutral";
+}
+
+function uniquePush(list, seen, value) {
+  const text = String(value || "").trim();
+  if (!text) return;
+  const key = normalizeFlagKey(text);
+  if (seen.has(key)) return;
+  seen.add(key);
+  list.push(text);
+}
+
+function isReviewItemSuggestedDelete(item, relatedLines = []) {
+  return Boolean((item && isSuggestedDeleteLine(item)) || relatedLines.some(line => line && isSuggestedDeleteLine(line)));
+}
+
+function reviewItemFlags(item, relatedLines = []) {
+  const flags = [];
+  const seen = new Set();
+  [item, ...relatedLines].forEach(source => {
+    (Array.isArray(source?.qaFlags) ? source.qaFlags : []).forEach(flag => uniquePush(flags, seen, flag));
+  });
+  if (isReviewItemSuggestedDelete(item, relatedLines)) uniquePush(flags, seen, "suggested-delete");
+  return flags;
+}
+
+function hasPriorityFlag(item, relatedLines = []) {
+  return reviewItemFlags(item, relatedLines).some(flag => {
+    const def = flagDefFor(flag);
+    return Boolean(def?.priority || flagCategory(flag) === "focus");
+  });
+}
+
+function reviewItemMatchesFilter(item, filterId, relatedLines = []) {
+  if (!filterId || filterId === "all") return true;
+  if (filterId === "focus") return hasPriorityFlag(item, relatedLines);
+  if (filterId === "delete-suggested") {
+    return isReviewItemSuggestedDelete(item, relatedLines)
+      || reviewItemFlags(item, relatedLines).some(flag => flagCategory(flag) === "delete-suggested");
+  }
+  return reviewItemFlags(item, relatedLines).some(flag => flagCategory(flag) === filterId);
+}
+
+function lineMatchesReviewFilter(line, filterId = qaFilter) {
+  return reviewItemMatchesFilter(line, filterId);
+}
+
+function activeReviewFilterLabel() {
+  return REVIEW_FILTERS.find(item => item.id === qaFilter)?.label || "全部";
+}
+
+function reviewFilterCounts() {
+  return Object.fromEntries(REVIEW_FILTERS.map(filter => [
+    filter.id,
+    filter.id === "all"
+      ? state.scriptLines.length
+      : state.scriptLines.filter(line => lineMatchesReviewFilter(line, filter.id)).length,
+  ]));
+}
+
+function renderReviewFilters() {
+  const mount = $("reviewFilters");
+  if (!mount) return;
+  const counts = reviewFilterCounts();
+  mount.innerHTML = REVIEW_FILTERS.map(filter => {
+    const active = qaFilter === filter.id;
+    return `<button type="button" class="small ${active ? "active" : ""}" data-review-filter="${escapeHtml(filter.id)}" aria-pressed="${active ? "true" : "false"}">${escapeHtml(filter.label)}<span class="filter-count">${counts[filter.id] || 0}</span></button>`;
+  }).join("");
+}
+
+function flagSearchTerms(flag) {
+  const def = flagDefFor(flag);
+  const raw = String(flag || "").trim();
+  return [
+    raw,
+    raw.replace(/[-_]/g, " "),
+    flagLabel(raw),
+    ...(def?.search || []),
+  ].filter(Boolean);
+}
+
+function reviewItemSearchText(item, relatedLines = [], extraText = "") {
+  const lineText = relatedLines.map(line => `${line.text || ""} ${line.source || ""}`).join(" ");
+  const flagText = reviewItemFlags(item, relatedLines).flatMap(flag => flagSearchTerms(flag)).join(" ");
+  return `${extraText || ""} ${item?.text || ""} ${item?.source || ""} ${lineText} ${flagText}`.toLowerCase();
+}
+
+function reviewFlagsHtml(item, relatedLines = []) {
+  const flags = reviewItemFlags(item, relatedLines);
+  if (!flags.length) return "";
+  const chips = flags.map(flag => {
+    const raw = String(flag || "").trim();
+    const label = flagLabel(raw);
+    const filter = flagFilterId(raw);
+    const title = label === raw ? raw : `${label} (${raw})`;
+    const attrs = filter ? ` type="button" data-review-filter="${escapeHtml(filter)}"` : "";
+    const tag = filter ? "button" : "span";
+    return `<${tag}${attrs} class="qa-chip ${escapeHtml(flagCssClass(raw))}" title="${escapeHtml(title)}">${escapeHtml(label)}</${tag}>`;
+  }).join("");
+  return `<div class="qa-flags" aria-label="待审重点">${chips}</div>`;
+}
+
+function reviewClassListForItem(item, relatedLines = []) {
+  return [
+    reviewItemMatchesFilter(item, "focus", relatedLines) ? "review-focus" : "",
+    reviewItemMatchesFilter(item, "asr-gap", relatedLines) ? "review-asr" : "",
+    reviewItemMatchesFilter(item, "dense-metric", relatedLines) ? "review-metric" : "",
+    reviewItemMatchesFilter(item, "term-risk", relatedLines) ? "review-term" : "",
+    reviewItemMatchesFilter(item, "delete-suggested", relatedLines) ? "review-delete-suggestion" : "",
+  ].filter(Boolean).join(" ");
+}
+
+function applyReviewRowClasses(row, item, relatedLines = []) {
+  row.classList.remove(...REVIEW_ROW_CLASSES);
+  reviewClassListForItem(item, relatedLines).split(" ").filter(Boolean).forEach(cls => row.classList.add(cls));
 }
 
 function cleanReviewText(text) {
@@ -976,11 +1276,13 @@ function renderMetrics() {
   const referenceGroups = state.referenceReview?.groups?.length || 0;
   const removed = deletedDuration();
   const visibleCount = visibleLines().length;
-  const filterActive = Boolean($("search")?.value.trim()) || showDeletedOnly;
+  const filterActive = Boolean($("search")?.value.trim()) || showDeletedOnly || qaFilter !== "all";
+  const reviewCounts = reviewFilterCounts();
   $("metrics").innerHTML = [
     `<div class="metric"><span>项目</span>${escapeHtml(meta.title || currentProjectId)}</div>`,
     `<div class="metric"><span>全文行数</span>${state.scriptLines.length}</div>`,
     referenceGroups ? `<div class="metric"><span>文案组</span>${referenceGroups}</div>` : "",
+    `<div class="metric"><span>待审重点</span>${reviewCounts.focus || 0}</div>`,
     `<div class="metric"><span>删除线</span>${deletedLines}</div>`,
     `<div class="metric"><span>删除时长</span>${fmt(removed)}</div>`,
     `<div class="metric"><span>预计成片</span>${fmt(meta.originalDuration - removed)}</div>`,
@@ -989,7 +1291,9 @@ function renderMetrics() {
     `<div class="metric"><span>状态</span>${dirty ? "未保存" : "已保存"}</div>`,
     `<div class="metric"><span>保存路径</span>${escapeHtml(meta.statePath || "")}</div>`
   ].filter(Boolean).join("");
-  $("filterInfo").textContent = filterActive ? `显示 ${visibleCount} / ${state.scriptLines.length}` : "";
+  $("filterInfo").textContent = filterActive
+    ? `显示 ${visibleCount} / ${state.scriptLines.length}${qaFilter !== "all" ? ` · ${activeReviewFilterLabel()}` : ""}`
+    : "";
   updateEditedPreviewInfo();
   renderProjectInfo();
 }
@@ -1074,8 +1378,9 @@ function visibleLines() {
   const q = $("search").value.trim().toLowerCase();
   return state.scriptLines.filter(line => {
     if (showDeletedOnly && !line.deleted) return false;
+    if (!lineMatchesReviewFilter(line)) return false;
     if (!q) return true;
-    return `${line.text} ${line.source || ""}`.toLowerCase().includes(q);
+    return reviewItemSearchText(line).includes(q);
   });
 }
 
@@ -1107,8 +1412,10 @@ function visibleCandidateGroups() {
   return groups.map(group => ({
     ...group,
     takes: (group.takes || []).filter(take => {
-      const text = `${group.referenceText || ""} ${takeText(take)} ${(take.qaFlags || []).join(" ")}`.toLowerCase();
+      const lines = linesForTake(take);
+      const text = reviewItemSearchText(take, lines, group.referenceText || "");
       if (showDeletedOnly && !takeDeleted(take)) return false;
+      if (!reviewItemMatchesFilter(take, qaFilter, lines)) return false;
       return !q || text.includes(q);
     }),
   })).filter(group => group.takes.length);
@@ -1121,6 +1428,7 @@ function renderModeControls() {
   $("candidateModeBtn").classList.toggle("active", reviewMode === "candidates");
   $("lineModeBtn").classList.toggle("active", reviewMode === "lines");
   $("showDeleted").classList.toggle("active", showDeletedOnly);
+  renderReviewFilters();
 }
 
 function renderRows() {
@@ -1130,8 +1438,9 @@ function renderRows() {
     const deleted = Boolean(line.deleted);
     const active = String(line.id) === String(activeLineId);
     const pause = line.lineType === "pause";
-    const flags = (line.qaFlags || []).length ? `<div class="qa-flags">${escapeHtml((line.qaFlags || []).join(" / "))}</div>` : "";
-    return `<div class="line-row ${deleted ? "deleted" : ""} ${active ? "active" : ""} ${pause ? "pause" : ""}" data-line-id="${line.id}">
+    const flags = reviewFlagsHtml(line);
+    const rowClass = ["line-row", deleted ? "deleted" : "", active ? "active" : "", pause ? "pause" : "", reviewClassListForItem(line)].filter(Boolean).join(" ");
+    return `<div class="${rowClass}" data-line-id="${line.id}">
       <div class="line-meta">
         <div><span class="line-number">#${line.index}</span></div>
         <div class="time">源 ${fmt(line.start)}-${fmt(line.end)}<br>${deleted ? "成片 删除" : `成片 ${fmt(sourceToOutputTime(line.start))}`}</div>
@@ -1168,10 +1477,11 @@ function renderCandidateGroups() {
           const firstLine = lines[0] || null;
           const deleted = takeDeleted(take);
           const active = firstLine && String(firstLine.id) === String(activeLineId);
-          const flags = (take.qaFlags || []).length ? `<div class="qa-flags">${escapeHtml((take.qaFlags || []).join(" / "))}</div>` : "";
+          const flags = reviewFlagsHtml(take, lines);
           const start = firstLine ? Math.min(...lines.map(line => parseNum(line.start))) : parseNum(take.start);
           const end = firstLine ? Math.max(...lines.map(line => parseNum(line.end))) : parseNum(take.end);
-          return `<div class="take-row ${deleted ? "deleted" : ""} ${active ? "active" : ""}" data-take-id="${escapeHtml(take.takeId || "")}" data-line-id="${firstLine?.id || take.lineId || ""}">
+          const rowClass = ["take-row", deleted ? "deleted" : "", active ? "active" : "", reviewClassListForItem(take, lines)].filter(Boolean).join(" ");
+          return `<div class="${rowClass}" data-take-id="${escapeHtml(take.takeId || "")}" data-line-id="${firstLine?.id || take.lineId || ""}">
             <div class="line-meta">
               <div><span class="line-number">#${escapeHtml(firstLine?.index || take.index || take.lineId || "")}</span></div>
               <div class="time">源 ${fmt(start)}-${fmt(end)}<br>${deleted ? "成片 删除" : `成片 ${fmt(sourceToOutputTime(start))}`}</div>
@@ -1238,6 +1548,7 @@ function updateLineRowState(line) {
   if (!row) return false;
   row.classList.toggle("deleted", Boolean(line.deleted));
   row.classList.toggle("active", String(line.id) === String(activeLineId));
+  applyReviewRowClasses(row, line);
   return true;
 }
 
@@ -1308,6 +1619,8 @@ function isSuggestedDeleteLine(line) {
   return source.startsWith("delete#")
     || source.includes("suggested-delete")
     || source.includes("delete-csv")
+    || source.includes("semantic-llm:delete")
+    || source.includes("targeted-fix:delete")
     || line.lineType === "pause";
 }
 
@@ -1868,6 +2181,11 @@ document.addEventListener("click", (e) => {
   if (row) setActive(row.dataset.lineId, false);
   const button = e.target.closest?.("button");
   if (!button) return;
+  if (button.dataset.reviewFilter) {
+    qaFilter = button.dataset.reviewFilter;
+    renderAll();
+    return;
+  }
   if (button.dataset.playLine) {
     const line = lineById(button.dataset.playLine);
     if (line) playRange(line.start, line.end, line.deleted ? "source" : "edited");
