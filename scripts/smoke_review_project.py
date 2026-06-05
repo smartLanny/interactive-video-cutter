@@ -90,6 +90,17 @@ def parse_json_output(proc: subprocess.CompletedProcess[str]) -> dict[str, Any]:
     return json.loads(text[start:])
 
 
+def load_server_module(root: Path):
+    module_path = root / "assets" / "review_tool" / "interactive_review_server.py"
+    spec = importlib.util.spec_from_file_location("interactive_review_server_smoke", module_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("could not load interactive_review_server.py")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 def require_file(path: Path) -> None:
     if not path.exists():
         raise RuntimeError(f"expected output missing: {path}")
@@ -169,6 +180,30 @@ def assert_preprocess_regressions(root: Path) -> None:
     if not repeated[0].get("deleted") or repeated[1].get("deleted") or repeated[1].get("takeRole") != "primary":
         raise RuntimeError(f"repeated take should prefer later close-quality take: {repeated}")
 
+    later_more_complete = [
+        {
+            "id": 103,
+            "start": 40.0,
+            "end": 42.0,
+            "text": "从配置上看这代的升级点有五个",
+            "_referenceIndex": 2,
+            "_referenceScore": 0.95,
+            "matchScore": 0.95,
+        },
+        {
+            "id": 104,
+            "start": 45.0,
+            "end": 50.0,
+            "text": "从配置上看这代的升级点有五个五零七零钛版本呢起步就是六十",
+            "_referenceIndex": 2,
+            "_referenceScore": 0.76,
+            "matchScore": 0.76,
+        },
+    ]
+    module.mark_reference_group_takes(later_more_complete)
+    if later_more_complete[0].get("deleted") is not True or later_more_complete[1].get("takeRole") != "primary":
+        raise RuntimeError(f"later more complete take should beat shorter high-score take: {later_more_complete}")
+
     later_unmatched_repeat = [
         {
             "id": 111,
@@ -216,6 +251,55 @@ def assert_preprocess_regressions(root: Path) -> None:
         raise RuntimeError(f"later unmatched repeat should delete earlier take: {later_unmatched_repeat}")
     if "later-repeat-keep" not in later_unmatched_repeat[3].get("qaFlags", []):
         raise RuntimeError(f"later repeat keep was not flagged: {later_unmatched_repeat}")
+
+    later_contains_previous = [
+        {"id": 121, "start": 180.0, "end": 182.0, "text": "从配置上看这代的升级点有五个", "deleted": False},
+        {"id": 122, "start": 183.0, "end": 188.0, "text": "从配置上看这代的升级点有五个五零七零钛版本呢起步就是六十", "deleted": False},
+    ]
+    module.mark_semantic_predeletes(later_contains_previous)
+    if not later_contains_previous[0].get("deleted") or later_contains_previous[1].get("deleted"):
+        raise RuntimeError(f"later containing repeat should delete shorter earlier take: {later_contains_previous}")
+
+    short_sandwich = [
+        {
+            "id": 131,
+            "start": 200.0,
+            "end": 201.0,
+            "text": "前面的场景会更复杂",
+            "deleted": False,
+            "_referenceIndex": 3,
+            "referenceIndex": 3,
+            "_referenceScore": 0.92,
+            "matchScore": 0.92,
+        },
+        {
+            "id": 132,
+            "start": 201.1,
+            "end": 201.4,
+            "text": "场景更",
+            "deleted": False,
+            "_referenceIndex": 3,
+            "referenceIndex": 3,
+            "_referenceScore": 0.74,
+            "matchScore": 0.74,
+        },
+        {
+            "id": 133,
+            "start": 201.5,
+            "end": 202.4,
+            "text": "接近真实游戏负载",
+            "deleted": False,
+            "_referenceIndex": 4,
+            "referenceIndex": 4,
+            "_referenceScore": 0.91,
+            "matchScore": 0.91,
+        },
+    ]
+    module.mark_reference_group_takes(short_sandwich)
+    if short_sandwich[1].get("deleted"):
+        raise RuntimeError(f"short sandwiched fragment should not be auto-deleted: {short_sandwich}")
+    if module.is_filler_or_fragment("接近", 0.3):
+        raise RuntimeError("semantic two-character fragment was treated as filler")
 
     gap_lines = [
         {"id": 201, "start": 0.0, "end": 2.0, "text": "前面一段有效口播", "deleted": False},
@@ -326,6 +410,58 @@ def assert_outputs(export_dir: Path) -> list[str]:
     return expected
 
 
+def assert_server_export_options_and_waveform(root: Path, manifest: Path, export_dir: Path) -> None:
+    module = load_server_module(root)
+    module.load_projects(manifest)
+    project = module.get_project("smoke-video")
+
+    path, peaks = module.waveform_peaks(project, "", 24)
+    if project.draft_media and path != project.draft_media:
+        raise RuntimeError(f"waveform should prefer draft audio proxy for video projects: {path}")
+    if len(peaks) != 120:
+        raise RuntimeError(f"waveform bins were not clamped to the minimum: {len(peaks)}")
+    for bucket in peaks:
+        for key in ("min", "max", "trace"):
+            value = bucket.get(key)
+            if not isinstance(value, (int, float)) or not -1.0 <= value <= 1.0:
+                raise RuntimeError(f"waveform peak out of range: {bucket}")
+        if bucket["min"] > bucket["max"]:
+            raise RuntimeError(f"waveform min/max inverted: {bucket}")
+
+    first_dir = module.allocate_unique_child_dir(export_dir, "timestamp-smoke")
+    second_dir = module.allocate_unique_child_dir(export_dir, "timestamp-smoke")
+    if first_dir.name != "timestamp-smoke" or second_dir.name != "timestamp-smoke-2":
+        raise RuntimeError(f"timestamped export directory names were not sequential: {first_dir}, {second_dir}")
+
+    try:
+        module.export_options_from_payload(project, {"outputDir": "../outside"})
+    except ValueError:
+        pass
+    else:
+        raise RuntimeError("export outputDir outside exportDir was not rejected")
+
+    cli_proc = run([
+        sys.executable,
+        str(root / "scripts" / "export_davinci_timeline.py"),
+        "--manifest",
+        str(manifest),
+        "--project",
+        "smoke-video",
+        "--output-dir",
+        "ui-cli",
+        "--naming-prefix",
+        "cli",
+    ])
+    cli_result = parse_json_output(cli_proc)
+    cli_dir = export_dir / "ui-cli"
+    if Path(cli_result.get("outputDir", "")).resolve() != cli_dir.resolve():
+        raise RuntimeError(f"CLI export outputDir mismatch: {cli_result}")
+    if cli_result.get("namingPrefix") != "cli-":
+        raise RuntimeError(f"CLI export naming prefix mismatch: {cli_result}")
+    require_file(cli_dir / "cli-review_state.json")
+    require_file(cli_dir / "cli-davinci_timeline.fcpxml")
+
+
 def assert_script_line_regression(root: Path, manifest: Path, state_path: Path, export_dir: Path) -> None:
     state = {
         "selectedDeletes": {},
@@ -336,6 +472,13 @@ def assert_script_line_regression(root: Path, manifest: Path, state_path: Path, 
             {"id": 2, "index": 2, "start": 0.5, "end": 1.0, "text": "", "deleted": True, "source": "manual-delete"},
             {"id": 3, "index": 3, "start": 1.0, "end": 1.8, "text": "RTX 5070 Ti，140W，DLSS 4.5.", "deleted": False, "source": "smoke"},
             {"id": 4, "index": 4, "start": 1.8, "end": 2.0, "text": "中置信删除待人工确认，QD-miniled，LGG6，WOI，只有大约 2000:1。", "deleted": False, "source": "smoke"},
+            {"id": 5, "index": 5, "start": 2.0, "end": 2.6, "text": "从配置上看", "deleted": False, "source": "smoke"},
+            {"id": 6, "index": 6, "start": 2.6, "end": 3.4, "text": "这代的升级点有五个", "deleted": False, "source": "smoke"},
+            {"id": 7, "index": 7, "start": 3.4, "end": 6.0, "text": "从配置上看这代的升级点有五个五零七零钛版本呢起步就是六十", "deleted": False, "source": "smoke"},
+            {"id": 8, "index": 8, "start": 6.0, "end": 7.0, "text": "5070 Ti 版本起步就是 64GB 内存", "deleted": False, "source": "smoke"},
+            {"id": 9, "index": 9, "start": 7.0, "end": 8.2, "text": "很少有 CPU 多核满载的高功耗场景", "deleted": False, "source": "smoke"},
+            {"id": 10, "index": 10, "start": 8.2, "end": 8.5, "text": "场景更", "deleted": False, "source": "smoke"},
+            {"id": 11, "index": 11, "start": 8.5, "end": 9.2, "text": "最重要的还是能效表现", "deleted": False, "source": "smoke"},
         ],
         "useScriptLines": True,
     }
@@ -365,6 +508,20 @@ def assert_script_line_regression(root: Path, manifest: Path, state_path: Path, 
             "reason": "smoke pending only",
             "qaFlags": ["semantic-llm-review"],
         },
+        {
+            "lineIds": [7],
+            "action": "delete",
+            "confidence": "high",
+            "reason": "smoke should not keep early shorter take over later complete take",
+            "qaFlags": ["semantic-llm-review"],
+        },
+        {
+            "lineIds": [10],
+            "action": "delete",
+            "confidence": "high",
+            "reason": "smoke short middle fragment should remain reviewable",
+            "qaFlags": ["semantic-llm-review"],
+        },
     ], ensure_ascii=False, indent=2))
     run([
         sys.executable,
@@ -385,6 +542,15 @@ def assert_script_line_regression(root: Path, manifest: Path, state_path: Path, 
         raise RuntimeError("medium-confidence delete suggestion was not flagged pending")
     if applied_state["scriptLines"][3]["text"] != "中置信删除待人工确认 QD-miniLED LG G6 WOLED 只有大约 2000:1":
         raise RuntimeError("existing line technical cleanup regression")
+    lines_by_id = {int(line["id"]): line for line in applied_state["scriptLines"]}
+    if lines_by_id[7].get("deleted"):
+        raise RuntimeError("later more complete take was auto-deleted by LLM suggestion")
+    if "keep-after-review" not in lines_by_id[7].get("qaFlags", []):
+        raise RuntimeError("later more complete take was not flagged for keep-after review")
+    if lines_by_id[10].get("deleted"):
+        raise RuntimeError("short middle fragment was auto-deleted by LLM suggestion")
+    if "keep-after-review" not in lines_by_id[10].get("qaFlags", []):
+        raise RuntimeError("short middle fragment was not flagged for keep-after review")
 
     run([
         sys.executable,
@@ -511,6 +677,7 @@ def smoke(root: Path, keep_temp: bool) -> dict[str, Any]:
         export_dir = review_dir / "interactive_exports"
         outputs = assert_outputs(export_dir)
         assert_script_line_regression(root, manifest, Path(create_result["state"]), export_dir)
+        assert_server_export_options_and_waveform(root, manifest, export_dir)
         summary = {
             "ok": True,
             "tempDir": str(tmp_root),
