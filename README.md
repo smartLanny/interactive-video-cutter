@@ -1,6 +1,6 @@
 # Interactive Video Cutter
 
-Local-first review and cutting workflow for long Chinese narration videos and audio. Give it a media file plus a reference script; it transcribes with local Qwen3-ASR, cleans the draft against the reference, opens a LAN review page, and exports subtitles, time-alignment sidecars, keep/delete segments, DaVinci/FCPXML handoff files, and optional rendered media.
+Local review and cutting workflow for long Chinese narration videos and audio. Give it a media file plus a reference script; it transcribes with Volcengine Seed ASR 2.0 standard when `VOLCENGINE_ASR_API_KEY` is available, falls back to local Qwen3-ASR otherwise, cleans the draft against the reference, opens a LAN review page, and exports subtitles, time-alignment sidecars, keep/delete segments, DaVinci/FCPXML handoff files, and optional rendered media.
 
 This is not a SaaS app. It is designed to run on a trusted local editing/render machine and be driven by an agent or CLI.
 
@@ -8,7 +8,7 @@ This is not a SaaS app. It is designed to run on a trusted local editing/render 
 
 - Imports audio or video from a local/NAS path.
 - For video inputs, creates a lightweight AAC audio proxy for ASR and web review while keeping the original video as the edit/export source.
-- Runs local Qwen3-ASR by default, optionally runs Volcengine Seed ASR 2.0 standard for cloud A/B comparison, caches transcript JSON, and writes `edit/takes_packed.md`, `edit/reference_review_report.md`, and compact review artifacts for agent review.
+- Runs Volcengine Seed ASR 2.0 standard by default when an API key is available, with local Qwen3-ASR as fallback, caches transcript JSON, and writes `edit/takes_packed.md`, `edit/reference_review_report.md`, and compact review artifacts for agent review.
 - Uses the reference script to fix terms, numbers, model names, punctuation, and Chinese sentence breaks.
 - Runs an AI polish stage before browser review so high-confidence cleanup is already written into `interactive_review_state.json`.
 - Opens a browser final-review page with one sentence per line.
@@ -46,7 +46,7 @@ The repository does not include model weights. If the machine cannot download mo
 
 Video inputs are converted once to a small mono AAC proxy at `<workdir>/edit/audio/<media-stem>_asr.m4a` before ASR or transcript import. The web review page uses that audio proxy for preview and transcript correction; browser video preview is intentionally out of scope for now. The transcript JSON and chunk cache still use the original media stem, and FCPXML/render exports still reference the original video path. Pass `--no-audio-proxy` only when you need to force the old direct-video ASR path, or `--refresh-audio-proxy` to rebuild an existing proxy.
 
-Long media is transcribed in chunks by default. Media at or above 600 seconds is split into 180 second ASR chunks, with resumable chunk JSON files under `edit/transcripts/<media-stem>.chunks/`. Tune with `--chunk-seconds` and `--chunk-threshold-seconds`, or pass `--no-chunk-transcribe` to force the whole-file ASR path against the selected ASR input.
+Local Qwen fallback transcribes long media in chunks by default. Media at or above 600 seconds is split into 180 second ASR chunks, with resumable chunk JSON files under `edit/transcripts/<media-stem>.chunks/`. Tune with `--chunk-seconds` and `--chunk-threshold-seconds`, or pass `--no-chunk-transcribe` to force the whole-file local ASR path against the selected ASR input. Volcengine runs upload the selected audio as one file unless URL mode is requested.
 
 ASR profiles are available on project creation and direct transcription:
 
@@ -56,18 +56,17 @@ ASR profiles are available on project creation and direct transcription:
 
 ASR terminology context is provider-specific. Local Qwen terminology context is opt-in: `create_review_project.py --asr-context` writes `<workdir>/edit/asr_context.txt` from a compact reference-derived term list and passes it to Qwen3-ASR; `--asr-context-file` passes an explicit context file. Do not use global context as the default local first pass for long narration: it can bias or truncate chunked decoding. Prefer no-context `fast` for the first local transcript, then rerun dense technical ranges with `quality` plus a short local context when needed. Transcript caches include the context hash so context and no-context runs do not silently share outputs.
 
-Volcengine Seed ASR 2.0 standard is available for cloud A/B comparison:
+`create_review_project.py --provider auto` is the default. It uses Volcengine Seed ASR 2.0 standard when `VOLCENGINE_ASR_API_KEY` is set and falls back to local Qwen when the key is absent. Use `--provider qwen` to force local ASR, or `--provider volcengine` to require cloud ASR.
 
 ```bash
 export VOLCENGINE_ASR_API_KEY="..."
 python3 scripts/create_review_project.py \
   --media /path/to/talk.m4a \
   --reference /path/to/script.md \
-  --workdir /path/to/review-work-cloud \
-  --provider volcengine
+  --workdir /path/to/review-work
 ```
 
-For `--provider volcengine`, reference-derived context is enabled by default unless `--no-asr-context` is passed. The script uploads the selected audio as whole-file `audio.data` when `--volcengine-audio-url` is omitted, and uses the standard submit/query resource `volc.seedasr.auc`. Use `--volcengine-audio-url` plus `--volcengine-no-data-upload` only when URL mode is required. If Python cannot verify a local proxy certificate chain, prefer `--volcengine-ca-bundle`; `--volcengine-insecure-tls` is only for short local diagnostics. Never commit or print API keys.
+For resolved Volcengine runs, reference-derived context is enabled by default unless `--no-asr-context` is passed. The script uploads the selected audio as whole-file `audio.data` when `--volcengine-audio-url` is omitted, and uses the standard submit/query resource `volc.seedasr.auc`. Use `--volcengine-audio-url` plus `--volcengine-no-data-upload` only when URL mode is required. If Python cannot verify a local proxy certificate chain, prefer `--volcengine-ca-bundle`; `--volcengine-insecure-tls` is only for short local diagnostics. Never commit or print API keys.
 
 Compare local and cloud transcripts:
 
@@ -185,8 +184,8 @@ Useful shortcuts:
 For video files, the workflow is:
 
 1. FFmpeg extracts a lightweight AAC audio proxy from the source video for ASR and browser audio review.
-2. Qwen3-ASR produces transcript text and word-level timing when available. The default local first pass does not use global ASR context.
-3. Optional targeted local reruns may pass a short terminology context for dense technical ranges; optional Volcengine standard A/B runs use reference-derived context by default.
+2. `--provider auto` runs Volcengine Seed ASR 2.0 standard with reference-derived context when `VOLCENGINE_ASR_API_KEY` is set, or falls back to local Qwen3-ASR when the key is absent.
+3. Local Qwen fallback does not use global ASR context by default; targeted local reruns may pass a short terminology context for dense technical ranges.
 4. `edit/takes_packed.md` gives agents a compact transcript reading view.
 5. Codex middle AI polish backs up `interactive_review_state.json`, then writes high-confidence deletes, term/number/unit fixes, and safe line cleanup directly into state.
 6. Direct EDL plus take-clustering validate the polish for missing-reference gaps, ASR timestamp gaps, orphan tails, time overlaps, repeated-take chains, and dense metric/protected-term runs.
@@ -263,7 +262,7 @@ Then ask Codex to use `$interactive-video-cutter` with a media path and referenc
 
 ## 中文说明
 
-`interactive-video-cutter` 是一个本地优先的长口播视频/音频审片剪辑工具。你给它一个本地或 NAS 上的视频/音频文件，再给一份口播参考文案，它会用本地 Qwen3-ASR 转写，再用参考文案修正术语、数字、型号、标点和中文断句，生成可在浏览器里审阅的项目。
+`interactive-video-cutter` 是一个长口播视频/音频审片剪辑工具。你给它一个本地或 NAS 上的视频/音频文件，再给一份口播参考文案；如果环境里有 `VOLCENGINE_ASR_API_KEY`，默认用火山引擎 Seed ASR 2.0 标准版转写，没有 key 时回退本地 Qwen3-ASR。之后它会用参考文案修正术语、数字、型号、标点和中文断句，生成可在浏览器里审阅的项目。
 
 它不是 SaaS，也不做公网账号系统。推荐运行在剪辑机、渲染机或局域网内的一台固定机器上，由 agent 或 CLI 导入项目，审阅者只在网页里做最后校对和删改。
 

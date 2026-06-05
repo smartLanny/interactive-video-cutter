@@ -17,8 +17,7 @@ The tool should not open a raw ASR transcript and leave all cleanup to the user.
 The intended production flow is:
 
 ```text
-fast ASR
--> optional cloud ASR A/B for risky windows or provider comparison
+ASR provider auto
 -> reference-grouped preprocessing
 -> AI polish writes high-confidence cleanup into interactive_review_state.json
 -> browser final review
@@ -72,10 +71,11 @@ For video files:
 1. Create a lightweight AAC audio proxy for ASR and browser review.
 2. Keep the original source video path as the FCPXML/render/Davinci media source.
 3. Do not add browser video preview unless that product direction is explicitly planned.
-4. Long media uses chunked ASR by default: 180 second chunks for media at or above 600 seconds.
-5. ASR context is provider-specific. Local Qwen first pass keeps global reference-derived context off by default; use context only for explicit local experiments or targeted dense technical ranges. Volcengine Seed ASR 2.0 standard comparison runs enable reference-derived context by default unless `--no-asr-context` is used.
+4. Local Qwen fallback uses chunked ASR by default: 180 second chunks for media at or above 600 seconds. Resolved Volcengine runs upload the selected audio as one file.
+5. ASR provider default is `--provider auto`: use Volcengine Seed ASR 2.0 standard when `VOLCENGINE_ASR_API_KEY` is present, otherwise fall back to local Qwen3-ASR.
+6. ASR context is provider-specific. Local Qwen fallback keeps global reference-derived context off by default; use context only for explicit local experiments or targeted dense technical ranges. Resolved Volcengine runs enable reference-derived context by default unless `--no-asr-context` is used.
 
-Volcengine Seed ASR 2.0 standard is optional cloud transcription for A/B, not a default writer. It reads `VOLCENGINE_ASR_API_KEY` from the environment, uploads whole local audio as `audio.data` unless URL mode is requested, and writes normal transcript JSON. Do not commit keys or real cloud outputs.
+Volcengine Seed ASR 2.0 standard is the preferred ASR path when a key is available, not a state writer. It reads `VOLCENGINE_ASR_API_KEY` from the environment, uploads whole local audio as `audio.data` unless URL mode is requested, and writes normal transcript JSON with character-level timing in observed Chinese output. Do not commit keys or real cloud outputs.
 
 Before trusting an export, validate that:
 
@@ -103,7 +103,7 @@ python3 scripts/create_review_project.py \
   --title "Talk Title"
 ```
 
-Create a cloud comparison project:
+Force cloud ASR:
 
 ```bash
 python3 scripts/create_review_project.py \

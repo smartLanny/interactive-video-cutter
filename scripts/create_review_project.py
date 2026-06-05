@@ -25,6 +25,10 @@ ASR_PROFILE_CHOICES = ("auto", "fast", "quality")
 DEFAULT_ASR_PROFILE = os.environ.get("INTERACTIVE_VIDEO_CUTTER_ASR_PROFILE", "auto")
 if DEFAULT_ASR_PROFILE not in ASR_PROFILE_CHOICES:
     DEFAULT_ASR_PROFILE = "auto"
+ASR_PROVIDER_CHOICES = ("auto", "volcengine", "qwen")
+DEFAULT_ASR_PROVIDER = os.environ.get("INTERACTIVE_VIDEO_CUTTER_ASR_PROVIDER", "auto")
+if DEFAULT_ASR_PROVIDER not in ASR_PROVIDER_CHOICES:
+    DEFAULT_ASR_PROVIDER = "auto"
 AUDIO_EXTS = {".aac", ".aiff", ".flac", ".m4a", ".mp3", ".ogg", ".wav", ".wma"}
 VIDEO_EXTS = {".m4v", ".mkv", ".mov", ".mp4", ".webm"}
 PACKED_SILENCE_THRESHOLD = 0.5
@@ -229,6 +233,12 @@ def write_asr_context(reference: Path, workdir: Path, use_reference_context: boo
     path = edit_dir / "asr_context.txt"
     path.write_text(context + "\n")
     return path
+
+
+def resolve_asr_provider(provider: str) -> str:
+    if provider != "auto":
+        return provider
+    return "volcengine" if os.environ.get("VOLCENGINE_ASR_API_KEY", "").strip() else "qwen"
 
 
 def transcribe(
@@ -584,7 +594,7 @@ def main() -> int:
     parser.add_argument("--project-id", help="Stable project id; defaults to a slug from title/media")
     parser.add_argument("--title", default="", help="Human-readable project title")
     parser.add_argument("--language", default="zh")
-    parser.add_argument("--provider", choices=["qwen", "volcengine"], default="qwen", help="ASR provider; qwen uses local Qwen3-ASR, volcengine uses Seed ASR 2.0 standard submit/query")
+    parser.add_argument("--provider", choices=ASR_PROVIDER_CHOICES, default=DEFAULT_ASR_PROVIDER, help="ASR provider; auto uses Volcengine Seed ASR 2.0 when VOLCENGINE_ASR_API_KEY is set, otherwise local Qwen3-ASR")
     parser.add_argument("--backend", default="mlx" if platform.system() == "Darwin" else "official")
     parser.add_argument("--asr-profile", choices=ASR_PROFILE_CHOICES, default=DEFAULT_ASR_PROFILE, help="auto=fast for long media and quality for short media; fast=Qwen3-ASR-0.6B, quality=Qwen3-ASR-1.7B")
     parser.add_argument("--model", default=os.environ.get("QWEN3_ASR_MODEL", ""), help="Override --asr-profile with an explicit Qwen model id")
@@ -628,7 +638,8 @@ def main() -> int:
     source_media_type = media_type(media)
     source_duration = probe_duration(media)
     audio_proxy = None
-    use_reference_asr_context = args.asr_context or args.provider == "volcengine"
+    resolved_provider = resolve_asr_provider(args.provider)
+    use_reference_asr_context = args.asr_context or resolved_provider == "volcengine"
     asr_context = None if args.no_asr_context else write_asr_context(reference, workdir, use_reference_asr_context, args.asr_context_file)
 
     if args.transcript_json:
@@ -638,7 +649,7 @@ def main() -> int:
     elif args.skip_transcribe:
         raise SystemExit("--skip-transcribe requires --transcript-json")
     else:
-        status = ensure_bootstrap(args.install_missing) if args.provider == "qwen" else {}
+        status = ensure_bootstrap(args.install_missing) if resolved_provider == "qwen" else {}
         transcribe_media = media
         output_stem = None
         if source_media_type == "video" and not args.no_audio_proxy:
@@ -650,7 +661,7 @@ def main() -> int:
             workdir,
             status,
             args.language,
-            args.provider,
+            resolved_provider,
             args.backend,
             args.asr_profile,
             args.model,
@@ -732,6 +743,7 @@ def main() -> int:
         "manifest": str(manifest),
         "state": str(state),
         "transcript": str(transcript),
+        "asrProvider": resolved_provider,
         "audioProxy": str(audio_proxy) if audio_proxy else "",
         "asrContext": str(asr_context) if asr_context else "",
         "sourceDuration": source_duration,

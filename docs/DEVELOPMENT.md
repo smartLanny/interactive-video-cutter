@@ -47,8 +47,8 @@ interactive-video-cutter/
    - For video inputs, creates `<workdir>/edit/audio/<media-stem>_asr.m4a` and uses that small AAC proxy for ASR and browser review playback.
    - Passes the probed source-media duration into the manifest so source-tail timing is not truncated to the last transcript line.
    - Runs ASR unless `--transcript-json --skip-transcribe` is provided.
-   - Optionally builds `<workdir>/edit/asr_context.txt` from reference-script terminology. For local Qwen, `--asr-context` or `--asr-context-file` is opt-in and the default first pass does not use global ASR context. For `--provider volcengine`, reference-derived context is enabled by default unless `--no-asr-context` is used.
-   - Supports `--provider qwen` for local default transcription and `--provider volcengine` for Volcengine Seed ASR 2.0 standard submit/query comparison. Volcengine reads `VOLCENGINE_ASR_API_KEY` from the environment and uploads the whole selected audio as `audio.data` unless URL mode is requested.
+   - Optionally builds `<workdir>/edit/asr_context.txt` from reference-script terminology. For resolved local Qwen fallback, `--asr-context` or `--asr-context-file` is opt-in and the default first pass does not use global ASR context. For resolved Volcengine runs, reference-derived context is enabled by default unless `--no-asr-context` is used.
+   - Supports `--provider auto` as the default: use Volcengine Seed ASR 2.0 standard when `VOLCENGINE_ASR_API_KEY` is present, otherwise fall back to local Qwen3-ASR. `--provider qwen` forces local ASR; `--provider volcengine` requires cloud ASR.
    - Calls `import_review_project.py` to create manifest and state.
    - Writes `<workdir>/edit/takes_packed.md` as a compact phrase-level transcript for agent review.
    - Writes `<workdir>/edit/reference_review_report.md` and `<workdir>/edit/semantic_review_packets.jsonl`. Long-form review should use Direct EDL plus take-clustering validation as the primary review path; packets are a residual QA surface.
@@ -85,7 +85,7 @@ interactive-video-cutter/
 
 7. `scripts/asr_ab_compare.py`
    - Compares local and cloud transcript JSON files for speed, text length, term hits, reference-fragment matches, and suspicious missing segments.
-   - Use it on short targeted windows before deciding whether a full cloud run is worth the cost/time.
+   - Use it on short targeted windows when evaluating a provider change, cloud regression, or local fallback quality.
 
 8. `scripts/preprocess_chinese.py`
    - Converts ASR `words`, `segments`, or `text` into timed review lines.
