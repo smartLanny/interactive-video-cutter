@@ -708,6 +708,80 @@ def split_segment_text(text: str, start: float, end: float) -> list[dict[str, An
     return lines
 
 
+def compact_timing_units(units: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    compact: list[dict[str, Any]] = []
+    for unit in units:
+        text = str(unit.get("text") or "")
+        norm = normalize_for_alignment(text)
+        if not norm:
+            continue
+        try:
+            start = float(unit["start"])
+            end = float(unit["end"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        compact.append({"text": text, "norm": norm, "start": start, "end": max(start + 0.01, end)})
+    return compact
+
+
+def best_timing_end_for_part(
+    units: list[dict[str, Any]],
+    start_index: int,
+    part: str,
+    min_remaining_units: int,
+) -> int | None:
+    part_norm = normalize_for_alignment(part)
+    if not part_norm or start_index >= len(units):
+        return None
+
+    max_end = max(start_index, len(units) - min_remaining_units - 1)
+    best: tuple[float, float, int] | None = None
+    compact = ""
+    for end_index in range(start_index, max_end + 1):
+        compact += str(units[end_index]["norm"])
+        if len(compact) < max(1, int(len(part_norm) * 0.35)):
+            continue
+        score = difflib.SequenceMatcher(None, compact, part_norm).ratio()
+        length_score = 1.0 - min(
+            1.0,
+            abs(len(compact) - len(part_norm)) / max(1, len(compact), len(part_norm)),
+        )
+        combined = score * 0.78 + length_score * 0.22
+        candidate = (combined, score, end_index)
+        if best is None or candidate > best:
+            best = candidate
+        if len(compact) > len(part_norm) * 2.25 and score < 0.58:
+            break
+    if best is None or best[1] < 0.45:
+        return None
+    return best[2]
+
+
+def unit_ranges_for_review_parts(
+    raw_units: list[dict[str, Any]],
+    parts: list[str],
+) -> list[tuple[float, float]] | None:
+    units = compact_timing_units(raw_units)
+    if len(units) < len(parts) or len(parts) <= 1:
+        return None
+
+    cursor = 0
+    ranges: list[tuple[float, float]] = []
+    for part_index, part in enumerate(parts):
+        if cursor >= len(units):
+            return None
+        if part_index == len(parts) - 1:
+            end_index = len(units) - 1
+        else:
+            min_remaining_units = len(parts) - part_index - 1
+            end_index = best_timing_end_for_part(units, cursor, part, min_remaining_units)
+            if end_index is None:
+                return None
+        ranges.append((round(float(units[cursor]["start"]), 3), round(float(units[end_index]["end"]), 3)))
+        cursor = end_index + 1
+    return ranges
+
+
 def lines_from_transcript_data(data: dict[str, Any]) -> list[dict[str, Any]]:
     words = data.get("words") or []
     word_lines = lines_from_word_units(units_from_words(words))
@@ -941,6 +1015,95 @@ def semantic_prefix_score(fragment_norm: str, reference_norm: str) -> float:
     return difflib.SequenceMatcher(None, fragment_norm, window[: len(fragment_norm)]).ratio()
 
 
+def line_block_norm(lines: list[dict[str, Any]]) -> str:
+    return normalize_for_semantic_review("".join(str(line.get("text") or "") for line in lines))
+
+
+def spoken_block_candidates_before(lines: list[dict[str, Any]], index: int) -> list[list[dict[str, Any]]]:
+    current_start = float(lines[index].get("start") or 0.0)
+    right_start = current_start
+    block: list[dict[str, Any]] = []
+    candidates: list[list[dict[str, Any]]] = []
+    for previous in reversed(lines[max(0, index - 8) : index]):
+        if previous.get("deleted") or previous.get("lineType") == "pause":
+            break
+        prev_start = float(previous.get("start") or 0.0)
+        prev_end = float(previous.get("end") or prev_start)
+        if right_start - prev_end > 1.5:
+            break
+        block.insert(0, previous)
+        right_start = prev_start
+        norm = line_block_norm(block)
+        if len(norm) >= 8:
+            candidates.append(list(block))
+        if len(block) >= 4 or current_start - prev_start > 12.0:
+            break
+    return candidates
+
+
+def spoken_block_candidates_from(lines: list[dict[str, Any]], index: int) -> list[list[dict[str, Any]]]:
+    block: list[dict[str, Any]] = []
+    candidates: list[list[dict[str, Any]]] = []
+    previous_end: float | None = None
+    start = float(lines[index].get("start") or 0.0)
+    for line in lines[index : min(len(lines), index + 4)]:
+        if line.get("deleted") or line.get("lineType") == "pause":
+            break
+        line_start = float(line.get("start") or 0.0)
+        line_end = float(line.get("end") or line_start)
+        if previous_end is not None and line_start - previous_end > 1.5:
+            break
+        block.append(line)
+        previous_end = line_end
+        norm = line_block_norm(block)
+        if len(norm) >= 8:
+            candidates.append(list(block))
+        if line_end - start > 12.0:
+            break
+    return candidates
+
+
+def later_block_repeats_previous(previous_block: list[dict[str, Any]], later_block: list[dict[str, Any]]) -> bool:
+    previous_norm = line_block_norm(previous_block)
+    later_norm = line_block_norm(later_block)
+    if len(previous_norm) < 8 or len(later_norm) < 8:
+        return False
+    length_ratio = len(later_norm) / max(1, len(previous_norm))
+    if length_ratio < 0.78 or length_ratio > 2.15:
+        return False
+    if previous_norm in later_norm:
+        return True
+    score = difflib.SequenceMatcher(None, previous_norm, later_norm).ratio()
+    return score >= 0.86
+
+
+def mark_nearby_later_repeated_takes(lines: list[dict[str, Any]]) -> None:
+    for index, line in enumerate(lines):
+        if line.get("deleted") or line.get("lineType") == "pause":
+            continue
+        previous_candidates = spoken_block_candidates_before(lines, index)
+        if not previous_candidates:
+            continue
+        later_candidates = spoken_block_candidates_from(lines, index)
+        for later_block in sorted(later_candidates, key=lambda block: len(line_block_norm(block)), reverse=True):
+            for previous_block in sorted(previous_candidates, key=lambda block: len(line_block_norm(block)), reverse=True):
+                if not later_block_repeats_previous(previous_block, later_block):
+                    continue
+                for previous in previous_block:
+                    previous["deleted"] = True
+                    previous["takeRole"] = previous.get("takeRole") or "alternate"
+                    append_flag(previous, "duplicate-take")
+                    append_flag(previous, "semantic-predelete")
+                    append_source(previous, "suggested-delete:later-repeat-take")
+                for kept in later_block:
+                    append_flag(kept, "later-repeat-keep")
+                    append_source(kept, "suggested-keep:later-repeat-take")
+                break
+            else:
+                continue
+            break
+
+
 def mark_reference_false_starts(lines: list[dict[str, Any]]) -> None:
     for index, line in enumerate(lines):
         if line.get("deleted") or line.get("lineType") == "pause" or line_ref_index(line) is not None:
@@ -999,6 +1162,7 @@ def mark_nearby_duplicate_fragments(lines: list[dict[str, Any]]) -> None:
 
 
 def mark_semantic_predeletes(lines: list[dict[str, Any]]) -> None:
+    mark_nearby_later_repeated_takes(lines)
     mark_reference_false_starts(lines)
     mark_nearby_duplicate_fragments(lines)
 
@@ -1345,17 +1509,22 @@ def split_review_line(line: dict[str, Any]) -> list[dict[str, Any]]:
     span = end - start
     total_chars = sum(max(1, len(part)) for part in parts)
     cursor = start
+    timing_ranges = unit_ranges_for_review_parts(line.get("_timingUnits") or [], parts)
     split_lines: list[dict[str, Any]] = []
-    for part in parts:
+    for index, part in enumerate(parts):
         part_span = span * max(1, len(part)) / total_chars
         item = dict(line)
-        item["start"] = round(cursor, 3)
-        item["end"] = round(min(end, cursor + part_span), 3)
+        if timing_ranges:
+            item["start"], item["end"] = timing_ranges[index]
+        else:
+            item["start"] = round(cursor, 3)
+            item["end"] = round(min(end, cursor + part_span), 3)
         item["text"] = part
         item["source"] = f"{item.get('source', '')} reference-split".strip()
         split_lines.append(item)
         cursor += part_span
-    split_lines[-1]["end"] = round(end, 3)
+    if not timing_ranges:
+        split_lines[-1]["end"] = round(end, 3)
     return split_lines
 
 
@@ -1372,6 +1541,7 @@ def finalize_lines(lines: list[dict[str, Any]]) -> list[dict[str, Any]]:
         item = dict(line)
         item.pop("_referenceIndex", None)
         item.pop("_referenceScore", None)
+        item.pop("_timingUnits", None)
         item["id"] = index
         item["index"] = index
         finalized.append(item)
@@ -1447,6 +1617,10 @@ def reference_aligned_lines_from_words(
             "matchCoverage": round(coverage, 4),
             "takeRole": "candidate" if mid_confidence else "low-confidence",
             "takeId": f"ref-{ref_index}-take-{take_index}",
+            "_timingUnits": [
+                {"text": unit["text"], "start": unit["start"], "end": unit["end"]}
+                for unit in units[start_index : end_index + 1]
+            ],
         }
         if not high_confidence:
             append_flag(line, "needs-review")

@@ -1102,6 +1102,10 @@ def validate_keep_segments(segments: list[dict], intervals: list[dict] | None = 
             raise ValueError(f"keep segment {i} has non-positive source duration")
         if out_end <= out_start:
             raise ValueError(f"keep segment {i} has non-positive timeline duration")
+        if i == 1 and abs(out_start) > 0.02:
+            raise ValueError("first keep segment does not start at timeline zero")
+        if i > 1 and abs(out_start - previous_out) > 0.02:
+            raise ValueError(f"keep segment {i} output timeline has a gap or overlap")
         if out_start + 0.02 < previous_out:
             raise ValueError(f"keep segment {i} output timeline is not monotonic")
         if abs((out_end - out_start) - (end - start)) > 0.05:
@@ -1495,7 +1499,13 @@ def send_no_content(handler: BaseHTTPRequestHandler) -> None:
     handler.end_headers()
 
 
-def send_file(handler: BaseHTTPRequestHandler, path: Path, *, include_body: bool = True) -> None:
+def send_file(
+    handler: BaseHTTPRequestHandler,
+    path: Path,
+    *,
+    include_body: bool = True,
+    cache_control: str | None = None,
+) -> None:
     if not path.exists():
         handler.send_error(404)
         return
@@ -1515,6 +1525,8 @@ def send_file(handler: BaseHTTPRequestHandler, path: Path, *, include_body: bool
     handler.send_header("Content-Type", content_type(path))
     handler.send_header("Accept-Ranges", "bytes")
     handler.send_header("Content-Length", str(length))
+    if cache_control:
+        handler.send_header("Cache-Control", cache_control)
     if range_header:
         handler.send_header("Content-Range", f"bytes {start}-{end}/{size}")
     handler.end_headers()
@@ -1541,7 +1553,7 @@ class Handler(BaseHTTPRequestHandler):
             send_no_content(self)
             return True
         if parsed.path in {"/", "/interactive_review_app.html"}:
-            send_file(self, APP_HTML, include_body=include_body)
+            send_file(self, APP_HTML, include_body=include_body, cache_control="no-store")
             return True
         if parsed.path.startswith("/media/"):
             parts = [unquote(part) for part in parsed.path.split("/") if part]

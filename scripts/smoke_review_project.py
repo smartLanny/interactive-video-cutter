@@ -115,6 +115,16 @@ def fcpxml_clip_ranges(path: Path) -> list[tuple[float, float]]:
     return ranges
 
 
+def fcpxml_timeline_ranges(path: Path) -> list[tuple[float, float]]:
+    text = path.read_text()
+    ranges: list[tuple[float, float]] = []
+    for match in re.finditer(r'<asset-clip[^>]*offset="([^"]+)"[^>]*duration="([^"]+)"', text):
+        start = fcpx_seconds(match.group(1))
+        duration = fcpx_seconds(match.group(2))
+        ranges.append((round(start, 3), round(start + duration, 3)))
+    return ranges
+
+
 def assert_preprocess_regressions(root: Path) -> None:
     module_path = root / "scripts" / "preprocess_chinese.py"
     spec = importlib.util.spec_from_file_location("preprocess_chinese_smoke", module_path)
@@ -158,6 +168,54 @@ def assert_preprocess_regressions(root: Path) -> None:
     module.mark_reference_group_takes(repeated)
     if not repeated[0].get("deleted") or repeated[1].get("deleted") or repeated[1].get("takeRole") != "primary":
         raise RuntimeError(f"repeated take should prefer later close-quality take: {repeated}")
+
+    later_unmatched_repeat = [
+        {
+            "id": 111,
+            "start": 160.0,
+            "end": 162.0,
+            "text": "其实这次散热的内部变化不大",
+            "deleted": False,
+            "_referenceIndex": 20,
+            "referenceIndex": 20,
+            "referenceText": "其实这次散热的内部变化不大依然是三风扇大面积均热板加液金的设计",
+            "takeRole": "primary",
+        },
+        {
+            "id": 112,
+            "start": 162.0,
+            "end": 163.0,
+            "text": "依然是三风扇",
+            "deleted": False,
+            "_referenceIndex": 20,
+            "referenceIndex": 20,
+            "referenceText": "其实这次散热的内部变化不大依然是三风扇大面积均热板加液金的设计",
+            "takeRole": "primary",
+        },
+        {
+            "id": 113,
+            "start": 163.0,
+            "end": 165.0,
+            "text": "大面积均热板加液金的设计",
+            "deleted": False,
+            "_referenceIndex": 20,
+            "referenceIndex": 20,
+            "referenceText": "其实这次散热的内部变化不大依然是三风扇大面积均热板加液金的设计",
+            "takeRole": "primary",
+        },
+        {
+            "id": 114,
+            "start": 166.0,
+            "end": 170.5,
+            "text": "其实啊这次散热的内部变化不大依然是三风扇大面积均热板加液晶的设计",
+            "deleted": False,
+        },
+    ]
+    module.mark_semantic_predeletes(later_unmatched_repeat)
+    if not all(line.get("deleted") for line in later_unmatched_repeat[:3]) or later_unmatched_repeat[3].get("deleted"):
+        raise RuntimeError(f"later unmatched repeat should delete earlier take: {later_unmatched_repeat}")
+    if "later-repeat-keep" not in later_unmatched_repeat[3].get("qaFlags", []):
+        raise RuntimeError(f"later repeat keep was not flagged: {later_unmatched_repeat}")
 
     gap_lines = [
         {"id": 201, "start": 0.0, "end": 2.0, "text": "前面一段有效口播", "deleted": False},
@@ -214,6 +272,29 @@ def assert_preprocess_regressions(root: Path) -> None:
         first_take = first_group["takes"][0]
         if float(first_take["start"]) >= 20.0:
             raise RuntimeError(f"reference alignment jumped to later similar text: {first_take}")
+
+        split_ref_path = Path(tmp) / "reference_split.txt"
+        split_ref_path.write_text(
+            "这次的散热也有升级，实测手动模式双烤做到了165W，比上一代提升25W。\n"
+        )
+        split_words = (
+            timed_words("这次散热也有升级", 30.0, 0.05)
+            + timed_words("实测手动模式双烤做到了165W", 35.0, 0.05)
+            + timed_words("比上一代提升25W", 38.0, 0.05)
+        )
+        split_payload = module.preprocess_transcript_payload(
+            {"words": split_words},
+            split_ref_path,
+            "reference-grouped",
+            1.2,
+        )
+        split_lines = [
+            line for line in split_payload["scriptLines"]
+            if line.get("source", "").find("reference-split") >= 0
+        ]
+        split_starts = [round(float(line["start"]), 2) for line in split_lines[:3]]
+        if split_starts != [30.0, 35.0, 38.0]:
+            raise RuntimeError(f"reference split did not preserve word timing: {split_lines[:3]}")
 
 
 def assert_outputs(export_dir: Path) -> list[str]:
@@ -317,6 +398,9 @@ def assert_script_line_regression(root: Path, manifest: Path, state_path: Path, 
     ranges = fcpxml_clip_ranges(export_dir / "davinci_timeline.fcpxml")
     if ranges != [(0.0, 0.5), (1.0, 2.0)]:
         raise RuntimeError(f"FCPXML did not cut blank deleted line: {ranges}")
+    timeline_ranges = fcpxml_timeline_ranges(export_dir / "davinci_timeline.fcpxml")
+    if timeline_ranges != [(0.0, 0.5), (0.5, 1.5)]:
+        raise RuntimeError(f"FCPXML output timeline is not continuous: {timeline_ranges}")
 
     delete_csv = (export_dir / "script_delete_intervals.csv").read_text()
     if "手动删除" not in delete_csv:
