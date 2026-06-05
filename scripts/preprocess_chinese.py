@@ -708,6 +708,80 @@ def split_segment_text(text: str, start: float, end: float) -> list[dict[str, An
     return lines
 
 
+def compact_timing_units(units: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    compact: list[dict[str, Any]] = []
+    for unit in units:
+        text = str(unit.get("text") or "")
+        norm = normalize_for_alignment(text)
+        if not norm:
+            continue
+        try:
+            start = float(unit["start"])
+            end = float(unit["end"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        compact.append({"text": text, "norm": norm, "start": start, "end": max(start + 0.01, end)})
+    return compact
+
+
+def best_timing_end_for_part(
+    units: list[dict[str, Any]],
+    start_index: int,
+    part: str,
+    min_remaining_units: int,
+) -> int | None:
+    part_norm = normalize_for_alignment(part)
+    if not part_norm or start_index >= len(units):
+        return None
+
+    max_end = max(start_index, len(units) - min_remaining_units - 1)
+    best: tuple[float, float, int] | None = None
+    compact = ""
+    for end_index in range(start_index, max_end + 1):
+        compact += str(units[end_index]["norm"])
+        if len(compact) < max(1, int(len(part_norm) * 0.35)):
+            continue
+        score = difflib.SequenceMatcher(None, compact, part_norm).ratio()
+        length_score = 1.0 - min(
+            1.0,
+            abs(len(compact) - len(part_norm)) / max(1, len(compact), len(part_norm)),
+        )
+        combined = score * 0.78 + length_score * 0.22
+        candidate = (combined, score, end_index)
+        if best is None or candidate > best:
+            best = candidate
+        if len(compact) > len(part_norm) * 2.25 and score < 0.58:
+            break
+    if best is None or best[1] < 0.45:
+        return None
+    return best[2]
+
+
+def unit_ranges_for_review_parts(
+    raw_units: list[dict[str, Any]],
+    parts: list[str],
+) -> list[tuple[float, float]] | None:
+    units = compact_timing_units(raw_units)
+    if len(units) < len(parts) or len(parts) <= 1:
+        return None
+
+    cursor = 0
+    ranges: list[tuple[float, float]] = []
+    for part_index, part in enumerate(parts):
+        if cursor >= len(units):
+            return None
+        if part_index == len(parts) - 1:
+            end_index = len(units) - 1
+        else:
+            min_remaining_units = len(parts) - part_index - 1
+            end_index = best_timing_end_for_part(units, cursor, part, min_remaining_units)
+            if end_index is None:
+                return None
+        ranges.append((round(float(units[cursor]["start"]), 3), round(float(units[end_index]["end"]), 3)))
+        cursor = end_index + 1
+    return ranges
+
+
 def lines_from_transcript_data(data: dict[str, Any]) -> list[dict[str, Any]]:
     words = data.get("words") or []
     word_lines = lines_from_word_units(units_from_words(words))
@@ -1345,17 +1419,22 @@ def split_review_line(line: dict[str, Any]) -> list[dict[str, Any]]:
     span = end - start
     total_chars = sum(max(1, len(part)) for part in parts)
     cursor = start
+    timing_ranges = unit_ranges_for_review_parts(line.get("_timingUnits") or [], parts)
     split_lines: list[dict[str, Any]] = []
-    for part in parts:
+    for index, part in enumerate(parts):
         part_span = span * max(1, len(part)) / total_chars
         item = dict(line)
-        item["start"] = round(cursor, 3)
-        item["end"] = round(min(end, cursor + part_span), 3)
+        if timing_ranges:
+            item["start"], item["end"] = timing_ranges[index]
+        else:
+            item["start"] = round(cursor, 3)
+            item["end"] = round(min(end, cursor + part_span), 3)
         item["text"] = part
         item["source"] = f"{item.get('source', '')} reference-split".strip()
         split_lines.append(item)
         cursor += part_span
-    split_lines[-1]["end"] = round(end, 3)
+    if not timing_ranges:
+        split_lines[-1]["end"] = round(end, 3)
     return split_lines
 
 
@@ -1372,6 +1451,7 @@ def finalize_lines(lines: list[dict[str, Any]]) -> list[dict[str, Any]]:
         item = dict(line)
         item.pop("_referenceIndex", None)
         item.pop("_referenceScore", None)
+        item.pop("_timingUnits", None)
         item["id"] = index
         item["index"] = index
         finalized.append(item)
@@ -1447,6 +1527,10 @@ def reference_aligned_lines_from_words(
             "matchCoverage": round(coverage, 4),
             "takeRole": "candidate" if mid_confidence else "low-confidence",
             "takeId": f"ref-{ref_index}-take-{take_index}",
+            "_timingUnits": [
+                {"text": unit["text"], "start": unit["start"], "end": unit["end"]}
+                for unit in units[start_index : end_index + 1]
+            ],
         }
         if not high_confidence:
             append_flag(line, "needs-review")

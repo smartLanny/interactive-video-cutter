@@ -115,6 +115,16 @@ def fcpxml_clip_ranges(path: Path) -> list[tuple[float, float]]:
     return ranges
 
 
+def fcpxml_timeline_ranges(path: Path) -> list[tuple[float, float]]:
+    text = path.read_text()
+    ranges: list[tuple[float, float]] = []
+    for match in re.finditer(r'<asset-clip[^>]*offset="([^"]+)"[^>]*duration="([^"]+)"', text):
+        start = fcpx_seconds(match.group(1))
+        duration = fcpx_seconds(match.group(2))
+        ranges.append((round(start, 3), round(start + duration, 3)))
+    return ranges
+
+
 def assert_preprocess_regressions(root: Path) -> None:
     module_path = root / "scripts" / "preprocess_chinese.py"
     spec = importlib.util.spec_from_file_location("preprocess_chinese_smoke", module_path)
@@ -214,6 +224,29 @@ def assert_preprocess_regressions(root: Path) -> None:
         first_take = first_group["takes"][0]
         if float(first_take["start"]) >= 20.0:
             raise RuntimeError(f"reference alignment jumped to later similar text: {first_take}")
+
+        split_ref_path = Path(tmp) / "reference_split.txt"
+        split_ref_path.write_text(
+            "这次的散热也有升级，实测手动模式双烤做到了165W，比上一代提升25W。\n"
+        )
+        split_words = (
+            timed_words("这次散热也有升级", 30.0, 0.05)
+            + timed_words("实测手动模式双烤做到了165W", 35.0, 0.05)
+            + timed_words("比上一代提升25W", 38.0, 0.05)
+        )
+        split_payload = module.preprocess_transcript_payload(
+            {"words": split_words},
+            split_ref_path,
+            "reference-grouped",
+            1.2,
+        )
+        split_lines = [
+            line for line in split_payload["scriptLines"]
+            if line.get("source", "").find("reference-split") >= 0
+        ]
+        split_starts = [round(float(line["start"]), 2) for line in split_lines[:3]]
+        if split_starts != [30.0, 35.0, 38.0]:
+            raise RuntimeError(f"reference split did not preserve word timing: {split_lines[:3]}")
 
 
 def assert_outputs(export_dir: Path) -> list[str]:
@@ -317,6 +350,9 @@ def assert_script_line_regression(root: Path, manifest: Path, state_path: Path, 
     ranges = fcpxml_clip_ranges(export_dir / "davinci_timeline.fcpxml")
     if ranges != [(0.0, 0.5), (1.0, 2.0)]:
         raise RuntimeError(f"FCPXML did not cut blank deleted line: {ranges}")
+    timeline_ranges = fcpxml_timeline_ranges(export_dir / "davinci_timeline.fcpxml")
+    if timeline_ranges != [(0.0, 0.5), (0.5, 1.5)]:
+        raise RuntimeError(f"FCPXML output timeline is not continuous: {timeline_ranges}")
 
     delete_csv = (export_dir / "script_delete_intervals.csv").read_text()
     if "手动删除" not in delete_csv:
