@@ -5,36 +5,39 @@
 <style>
   :root {
     color-scheme: light;
-    --bg: #faf9f7;
-    --paper: #ffffff;
+    --bg: #f6f3ed;
+    --paper: #fffefa;
     --ink: #24211d;
-    --muted: #77716a;
-    --faint: #a9a29a;
-    --line: #e8e1d8;
-    --line-strong: #d7cab9;
-    --panel: #ffffff;
-    --panel-soft: #fcfaf7;
-    --accent: #a86612;
-    --accent-soft: #f4e4cf;
-    --danger: #a5382e;
-    --danger-soft: #f8e5df;
+    --muted: #746d64;
+    --faint: #aaa196;
+    --line: #dfd6ca;
+    --line-strong: #cbbdab;
+    --panel: #fffefa;
+    --panel-soft: #f8f4ed;
+    --accent: #966317;
+    --accent-soft: #f0dec6;
+    --danger: #9d3d32;
+    --danger-soft: #f6e4dd;
     --ok: #1d7c46;
     --info: #2866b2;
-    --nav: #fbfaf8;
-    --timeline-height: 56px;
-    --shadow: 0 18px 50px rgba(44, 32, 18, 0.08);
+    --nav: #f8f5ef;
+    --timeline-height: 84px;
+    --shadow: 0 18px 44px rgba(38, 28, 17, 0.06);
   }
   * { box-sizing: border-box; }
   body {
     margin: 0;
     font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Arial, sans-serif;
     color: var(--ink);
-    background: var(--bg);
+    background:
+      radial-gradient(circle at 18px 18px, rgba(70, 52, 31, 0.018) 0 1px, transparent 1px 100%),
+      linear-gradient(180deg, #fbfaf6 0%, var(--bg) 100%);
+    background-size: 24px 24px, auto;
     line-height: 1.45;
     padding-bottom: var(--timeline-height);
   }
   body.timeline-expanded {
-    --timeline-height: 160px;
+    --timeline-height: 192px;
   }
   .topbar {
     position: sticky;
@@ -46,7 +49,7 @@
     align-items: center;
     min-height: 64px;
     padding: 0 22px;
-    background: rgba(255, 255, 255, 0.96);
+    background: rgba(255, 254, 250, 0.96);
     border-bottom: 1px solid var(--line);
     backdrop-filter: blur(12px);
   }
@@ -59,21 +62,6 @@
   }
   .topbar-left { gap: 12px; }
   .topbar-right { justify-content: flex-end; gap: 8px; }
-  .window-dots {
-    display: flex;
-    gap: 7px;
-    flex: 0 0 auto;
-    margin-right: 6px;
-  }
-  .window-dots span {
-    width: 11px;
-    height: 11px;
-    border-radius: 50%;
-    display: block;
-  }
-  .window-dots span:nth-child(1) { background: #ed6a5e; }
-  .window-dots span:nth-child(2) { background: #f4be4f; }
-  .window-dots span:nth-child(3) { background: #61c554; }
   h1, .project-title {
     margin: 0;
     min-width: 0;
@@ -136,7 +124,7 @@
     border: 1px solid var(--line);
     border-radius: 8px;
     overflow: hidden;
-    background: #f3eee7;
+    background: #f1ece4;
   }
   .view-toggle button {
     border: 0;
@@ -146,7 +134,7 @@
     padding: 7px 14px;
   }
   .view-toggle button.active {
-    background: #fff7ea;
+    background: #f7ead9;
     color: var(--accent);
     box-shadow: inset 0 0 0 1px #e7caa6;
   }
@@ -157,7 +145,7 @@
     border: 1px solid var(--line);
     border-radius: 7px;
     padding: 7px 10px;
-    background: #fff;
+    background: var(--paper);
     color: var(--ink);
     cursor: pointer;
     white-space: nowrap;
@@ -200,7 +188,7 @@
     stroke-width: 1.8;
   }
   .icon-btn:hover {
-    background: #f4efe8;
+    background: #f1ece4;
   }
   .status {
     min-height: 0;
@@ -226,7 +214,7 @@
     align-content: start;
     gap: 6px;
     padding: 28px 8px;
-    background: var(--nav);
+    background: rgba(248, 245, 239, 0.88);
     border-right: 1px solid var(--line);
   }
   .side-nav button {
@@ -330,6 +318,9 @@
   main.review-layout {
     min-height: calc(100vh - 64px - var(--timeline-height));
     padding: 16px 30px 30px;
+    background:
+      linear-gradient(90deg, rgba(255, 254, 250, 0.62), rgba(255, 254, 250, 0.92) 13%, rgba(255, 254, 250, 0.92) 88%, rgba(255, 254, 250, 0.48)),
+      linear-gradient(180deg, rgba(255,255,255,0.64), rgba(250,247,241,0.34));
   }
   .toolbar {
     display: grid;
@@ -343,7 +334,7 @@
     max-width: none;
     padding: 10px 0 13px;
     border-bottom: 1px solid var(--line);
-    background: rgba(250, 249, 247, 0.94);
+    background: rgba(255, 254, 250, 0.94);
     backdrop-filter: blur(10px);
   }
   .filter-info {
@@ -450,7 +441,7 @@
   .line-row:last-child { border-bottom: 0; }
   .line-row.active {
     outline: 0;
-    background: #fff6eb;
+    background: #faf0e1;
   }
   .line-row.deleted {
     background: transparent;
@@ -865,20 +856,22 @@
     right: 0;
     bottom: 0;
     z-index: 11;
+    display: grid;
+    grid-template-rows: minmax(0, 1fr) 26px;
     height: var(--timeline-height);
     border-top: 1px solid var(--line);
-    background: rgba(255, 253, 249, 0.98);
-    box-shadow: 0 -10px 30px rgba(44, 32, 18, 0.08);
+    background: rgba(255, 254, 250, 0.992);
+    box-shadow: 0 -8px 22px rgba(38, 28, 17, 0.055);
     transition: height 160ms ease;
   }
   .timeline-shell {
-    height: 100%;
+    min-height: 0;
     display: grid;
-    grid-template-columns: 166px minmax(260px, 1fr) 150px;
+    grid-template-columns: 166px minmax(320px, 1fr) 132px;
     column-gap: 18px;
     row-gap: 6px;
     align-items: center;
-    padding: 8px 22px 10px;
+    padding: 8px 24px 6px;
   }
   .timeline-left {
     display: flex;
@@ -941,11 +934,11 @@
   .timeline-track {
     position: relative;
     height: 10px;
-    border: 1px solid #d7cbbd;
+    border: 1px solid #d4c7b7;
     border-radius: 999px;
     background:
-      linear-gradient(90deg, rgba(168, 102, 18, 0.15), rgba(168, 102, 18, 0.04)),
-      #f4ecdf;
+      linear-gradient(90deg, rgba(150, 99, 23, 0.14), rgba(150, 99, 23, 0.04)),
+      #efe4d5;
     cursor: pointer;
     overflow: hidden;
   }
@@ -958,7 +951,7 @@
     bottom: 0;
   }
   .timeline-delete-block {
-    background: rgba(42, 42, 40, 0.48);
+    background: rgba(45, 42, 38, 0.50);
     box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06);
   }
   .timeline-delete-block.inspect {
@@ -974,7 +967,7 @@
     min-width: 3px;
     border-left: 2px solid var(--accent);
     border-right: 2px solid var(--accent);
-    background: rgba(168, 102, 18, 0.18);
+    background: rgba(139, 91, 31, 0.16);
     z-index: 2;
   }
   .timeline-playhead {
@@ -1003,39 +996,64 @@
   .timeline-expanded-panel {
     display: none;
     grid-column: 1 / -1;
-    grid-template-columns: 166px minmax(260px, 1fr) 360px;
+    grid-template-columns: 166px minmax(320px, 1fr);
+    grid-template-rows: auto 28px;
     column-gap: 18px;
     row-gap: 0;
-    align-items: end;
+    align-items: start;
     padding-top: 0;
   }
   body.timeline-expanded .timeline-shell {
-    grid-template-rows: 36px 46px 30px;
+    grid-template-rows: 34px minmax(0, 1fr) 28px;
     align-items: start;
+  }
+  body.timeline-expanded .timeline-main {
+    display: none;
   }
   body.timeline-expanded .timeline-expanded-panel {
     display: grid;
   }
   .waveform-wrap {
+    grid-column: 2;
     min-width: 0;
+  }
+  .expanded-labels {
+    margin-bottom: 7px;
   }
   .waveform {
     position: relative;
-    height: 40px;
-    display: flex;
-    align-items: center;
-    gap: 2px;
-    padding: 0 4px;
+    height: 74px;
+    border: 1px solid #d7cbbb;
     border-radius: 6px;
-    background: linear-gradient(180deg, #fffaf4 0%, #f5eadb 100%);
+    background:
+      linear-gradient(90deg, rgba(151, 99, 23, 0.055) 0 1px, transparent 1px 100%),
+      linear-gradient(180deg, #fff9ef 0%, #f4eadc 100%);
+    background-size: 10% 100%, auto;
     overflow: hidden;
   }
-  .waveform-bar {
-    flex: 1 1 0;
-    max-width: 7px;
-    min-width: 2px;
-    border-radius: 999px;
-    background: rgba(190, 152, 105, 0.48);
+  .waveform-svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+  .waveform-midline {
+    stroke: rgba(111, 106, 97, 0.22);
+    stroke-width: 1;
+    vector-effect: non-scaling-stroke;
+  }
+  .waveform-range {
+    fill: none;
+    stroke: rgba(144, 101, 46, 0.25);
+    stroke-width: 0.45;
+    vector-effect: non-scaling-stroke;
+  }
+  .waveform-trace {
+    fill: none;
+    stroke: rgba(126, 87, 39, 0.68);
+    stroke-width: 1;
+    vector-effect: non-scaling-stroke;
   }
   .waveform-status {
     position: absolute;
@@ -1066,11 +1084,12 @@
   .range-handle.start { transform: translateX(-50%); }
   .range-handle.end { transform: translateX(50%); }
   .timeline-controls {
-    display: grid;
-    grid-template-columns: auto auto auto auto;
-    justify-content: end;
+    grid-column: 2;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
     align-items: center;
-    gap: 8px;
+    gap: 8px 14px;
     color: var(--muted);
     font-size: 12px;
   }
@@ -1081,7 +1100,7 @@
     white-space: nowrap;
   }
   .timeline-controls input[type="range"] {
-    width: 92px;
+    width: 82px;
     accent-color: var(--accent);
   }
   .timeline-controls select {
@@ -1109,6 +1128,33 @@
     padding: 3px 6px;
     font-size: 11px;
     line-height: 1.2;
+  }
+  .shortcut-strip {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    min-width: 0;
+    padding: 0 24px;
+    border-top: 1px solid rgba(225, 216, 204, 0.72);
+    color: var(--muted);
+    font-size: 12px;
+    white-space: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(150, 99, 23, 0.28) transparent;
+  }
+  .shortcut-strip span {
+    flex: 0 0 auto;
+  }
+  .shortcut-strip kbd {
+    margin-right: 4px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--ink);
+    font: inherit;
+    font-weight: 560;
   }
   .export-popover {
     position: fixed;
@@ -1200,12 +1246,15 @@
       grid-template-columns: 1fr 1fr;
       justify-content: start;
     }
+    .waveform-wrap,
+    .timeline-controls {
+      grid-column: auto;
+    }
   }
 </style>
 
 <header class="topbar">
   <div class="topbar-left">
-    <div class="window-dots" aria-hidden="true"><span></span><span></span><span></span></div>
     <button class="icon-btn" type="button" title="导航">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
     </button>
@@ -1324,6 +1373,7 @@
         <strong id="editedPreviewInfo">自动跳过删除段</strong>
       </div>
       <div class="waveform-wrap">
+        <div id="expandedTimelineLabels" class="timeline-labels expanded-labels"></div>
         <div id="waveform" class="waveform"></div>
       </div>
       <div class="timeline-controls">
@@ -1349,6 +1399,24 @@
       <button id="nudgeEndBack" class="small" type="button">后缘 -0.1s</button>
       <button id="nudgeEndForward" class="small" type="button">后缘 +0.1s</button>
     </div>
+  </div>
+  <div class="shortcut-strip" aria-label="快捷键说明">
+    <span><kbd>空格</kbd>播放/暂停</span>
+    <span><kbd>⌘P</kbd>听当前句</span>
+    <span><kbd>J/K</kbd>上/下一句</span>
+    <span><kbd>↑/↓</kbd>按句移动</span>
+    <span><kbd>Tab</kbd>切换句</span>
+    <span><kbd>⌘↑/↓</kbd>跳待审</span>
+    <span><kbd>⌘D</kbd>删/恢复</span>
+    <span><kbd>Enter</kbd>拆分</span>
+    <span><kbd>⌘J</kbd>合并下句</span>
+    <span><kbd>Backspace</kbd>并上句</span>
+    <span><kbd>⌘B</kbd>展开</span>
+    <span><kbd>⌘Z</kbd>撤销</span>
+    <span><kbd>⇧⌘Z/⌘Y</kbd>重做</span>
+    <span><kbd>/</kbd>搜索</span>
+    <span><kbd>Esc</kbd>清空</span>
+    <span><kbd>⌘S</kbd>保存</span>
   </div>
 </footer>
 
@@ -2850,15 +2918,28 @@ function waveformBarsHtml() {
   if (waveformLoading) return `<div class="waveform-status">正在生成真实波形…</div>`;
   if (waveformError) return `<div class="waveform-status">${escapeHtml(waveformError)}</div>`;
   if (!waveformPeaks.length) return `<div class="waveform-status">展开后生成真实波形</div>`;
-  return waveformPeaks.map(peak => {
-    const h = Math.max(4, Math.round(peak * 42));
-    return `<span class="waveform-bar" style="height:${h}px"></span>`;
-  }).join("");
+  const count = waveformPeaks.length;
+  const rangePath = waveformPeaks.map((bucket, i) => {
+    const x = count <= 1 ? 0 : (i / (count - 1)) * 100;
+    const top = 50 - Math.max(1.5, bucket.max * 43);
+    const bottom = 50 - Math.min(-1.5, bucket.min * 43);
+    return `M ${x.toFixed(3)} ${top.toFixed(3)} L ${x.toFixed(3)} ${bottom.toFixed(3)}`;
+  }).join(" ");
+  const tracePath = waveformPeaks.map((bucket, i) => {
+    const x = count <= 1 ? 0 : (i / (count - 1)) * 100;
+    const y = 50 - bucket.trace * 39;
+    return `${i === 0 ? "M" : "L"} ${x.toFixed(3)} ${y.toFixed(3)}`;
+  }).join(" ");
+  return `<svg class="waveform-svg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-label="真实音频波形">
+    <path class="waveform-midline" d="M 0 50 L 100 50"></path>
+    <path class="waveform-range" d="${rangePath}"></path>
+    <path class="waveform-trace" d="${tracePath}"></path>
+  </svg>`;
 }
 
 function waveformBarCount() {
   const width = $("waveform")?.clientWidth || 900;
-  return Math.max(96, Math.min(240, Math.round(width / 5)));
+  return Math.max(240, Math.min(920, Math.round(width / 2)));
 }
 
 function waveformSourceMedia() {
@@ -2906,22 +2987,37 @@ async function ensureWaveformPeaks() {
     const audioBuffer = await context.decodeAudioData(arrayBuffer);
     const channelCount = Math.max(1, audioBuffer.numberOfChannels);
     const samplesPerBar = Math.max(1, Math.floor(audioBuffer.length / count));
-    const peaks = [];
-    let maxPeak = 0;
+    const buckets = [];
+    let maxAbs = 0;
     for (let i = 0; i < count; i += 1) {
       const start = i * samplesPerBar;
       const end = Math.min(audioBuffer.length, start + samplesPerBar);
-      let peak = 0;
-      for (let c = 0; c < channelCount; c += 1) {
-        const data = audioBuffer.getChannelData(c);
-        let sum = 0;
-        for (let j = start; j < end; j += 1) sum += Math.abs(data[j] || 0);
-        peak = Math.max(peak, sum / Math.max(1, end - start));
+      let min = 1;
+      let max = -1;
+      let trace = 0;
+      let traceCount = 0;
+      const traceStart = Math.max(start, Math.floor((start + end) / 2) - 2);
+      const traceEnd = Math.min(end, traceStart + 5);
+      for (let j = start; j < end; j += 1) {
+        let sample = 0;
+        for (let c = 0; c < channelCount; c += 1) sample += audioBuffer.getChannelData(c)[j] || 0;
+        sample /= channelCount;
+        min = Math.min(min, sample);
+        max = Math.max(max, sample);
+        maxAbs = Math.max(maxAbs, Math.abs(sample));
+        if (j >= traceStart && j < traceEnd) {
+          trace += sample;
+          traceCount += 1;
+        }
       }
-      peaks.push(peak);
-      maxPeak = Math.max(maxPeak, peak);
+      buckets.push({ min, max, trace: trace / Math.max(1, traceCount) });
     }
-    waveformPeaks = peaks.map(peak => Math.max(0.08, peak / Math.max(maxPeak, 0.0001)));
+    const scale = Math.max(maxAbs, 0.0001);
+    waveformPeaks = buckets.map(bucket => ({
+      min: Math.max(-1, Math.min(1, bucket.min / scale)),
+      max: Math.max(-1, Math.min(1, bucket.max / scale)),
+      trace: Math.max(-1, Math.min(1, bucket.trace / scale)),
+    }));
     if (context.close) await context.close();
   } catch {
     waveformPeaks = [];
@@ -2943,7 +3039,10 @@ function renderTimeline() {
   if (!track) return;
   document.body.classList.toggle("timeline-expanded", timelineExpanded);
   $("timelineExpandBtn").textContent = timelineExpanded ? "收起 ⌘B" : "展开 ⌘B";
-  $("timelineLabels").innerHTML = timelineLabelsHtml();
+  const labels = timelineLabelsHtml();
+  $("timelineLabels").innerHTML = labels;
+  const expandedLabels = $("expandedTimelineLabels");
+  if (expandedLabels) expandedLabels.innerHTML = labels;
   track.innerHTML = timelineOverlayHtml();
   $("timelineOutputTime").textContent = fmt(sourceToOutputTime(timelineSourceTime));
   $("timelineSourceTime").textContent = fmt(timelineSourceTime);
@@ -3313,6 +3412,11 @@ document.addEventListener("keydown", (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "j") {
     e.preventDefault();
     if (activeLineId) mergeNext(activeLineId);
+    return;
+  }
+  if (!isEditable && (e.key === " " || e.key === "Spacebar")) {
+    e.preventDefault();
+    toggleTimelinePlayback();
     return;
   }
   if (!isEditable && e.key === "/") {

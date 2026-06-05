@@ -32,8 +32,9 @@ The left navigation remains light:
 - Deleted segments render as dark blocks.
 - Normal edited preview playback skips deleted segments.
 - Clicking a dark block enters delete-segment inspection mode for listen, restore, and boundary nudge.
-- Mini bottom timeline should stay around 44-56 px.
-- `Cmd+B` expands the bottom audio area to show waveform skeleton, range handles, zoom, speed, volume, and snap controls.
+- Default bottom area keeps a 44-56 px mini source timeline plus a thin shortcut reference strip below it.
+- `Cmd+B` expands the same bottom timeline into a decoded real-media waveform with range handles, zoom, speed, volume, and snap controls.
+- Expanded mode must not show a second mini track above the waveform; it is one timeline in a larger form.
 
 ## Reference Build Notes
 
@@ -46,6 +47,8 @@ The left navigation remains light:
 - Continuous view keeps article reading as the main surface and uses a lightweight audit navigation rail for review targets.
 - Manuscript body text uses the built-in simplified Songti family (`Songti SC`) as the first font choice.
 - Expanded audio timeline must use decoded real media waveform when available, not simulated bars.
+- Do not add decorative chrome such as Mac-style window dots unless it maps to a real interaction.
+- The bottom shortcut strip should list the actual available shortcuts in concise Chinese.
 
 ## Keyboard
 
