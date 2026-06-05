@@ -17,7 +17,7 @@ Visual direction: paper manuscript editor. Text is the main object; tools stay q
 
 - `字幕`: default view, one sentence per row, text first, time metadata subdued.
 - `文案`: article-like reading view, deleted content shown inline with red-brown strikethrough, light background, and duration capsules.
-- `完成版`: read-only kept-script view using the current deletion settings without changing state.
+- `当前保留`: aggregate filter pill, not a separate view. In `字幕` it hides deleted rows; in `文案` it keeps the article view but shows only retained content.
 
 The left navigation remains light:
 
@@ -34,7 +34,8 @@ The left navigation remains light:
 - Normal edited preview playback skips deleted segments.
 - Clicking a dark block enters delete-segment inspection mode for listen, restore, and boundary nudge.
 - Default bottom area keeps a 44-56 px mini source timeline plus a thin shortcut reference strip below it.
-- `Cmd+B` expands the same bottom timeline into a decoded real-media waveform with range handles, speed, volume, and snap controls. Hide zoom controls until zoom has a real viewport implementation.
+- `Cmd+B` expands the same bottom timeline into a decoded real-media waveform with range handles, speed, volume, zoom, pan, and snap controls.
+- Timeline defaults to a close active-line window of roughly 20 seconds and follows the active line. Expanded waveform requests peaks for the current viewport instead of sparsely slicing full-project peaks.
 - Expanded waveform zoom uses one shared viewport: zoom changes the visible time range, pan moves that range, and waveform peaks, deleted blocks, risk marks, selection, labels, and click-to-seek all render against that same viewport.
 - Expanded mode must not show a second mini track above the waveform; it is one timeline in a larger form.
 
@@ -56,6 +57,7 @@ The left navigation remains light:
 
 - Existing shortcuts must remain: save, line play, delete, split, merge, undo/redo, search, line navigation.
 - `Cmd+B`: expand/collapse bottom timeline.
+- `Option+P`: continuous source playback from the current line through the currently visible filtered rows.
 - `Cmd+Up` / `Cmd+Down`: jump to previous/next high-risk or review segment.
 
 ## Non-Goals

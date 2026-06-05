@@ -790,18 +790,6 @@
     line-height: inherit;
     border-radius: 4px;
   }
-  .final-paper {
-    max-width: 920px;
-    margin: 0 auto;
-    padding: 28px 8px 44px;
-    font-family: "Songti SC", "STSong", "SimSun", serif;
-    font-size: 20px;
-    line-height: 2.12;
-  }
-  .final-segment {
-    display: inline;
-    padding: 0;
-  }
   .duration-pill {
     display: inline-flex;
     align-items: center;
@@ -1373,7 +1361,6 @@
         <div class="view-toggle" aria-label="审阅模式">
           <button id="lineModeBtn" type="button" class="active">字幕</button>
           <button id="continuousModeBtn" type="button">文案</button>
-          <button id="finalModeBtn" type="button">完成版</button>
         </div>
         <section class="metrics" id="metrics"></section>
         <div class="filter-info" id="filterInfo"></div>
@@ -1435,7 +1422,7 @@
           </select>
         </label>
         <label>音量 <input id="timelineVolume" type="range" min="0" max="1" step="0.01" value="1"></label>
-        <label>缩放 <input id="timelineZoom" type="range" min="1" max="16" step="0.1" value="1"></label>
+        <label>缩放 <input id="timelineZoom" type="range" min="1" max="160" step="0.1" value="1"></label>
         <label>位置 <input id="timelinePan" class="timeline-pan" type="range" min="0" max="1" step="0.001" value="0"></label>
         <span id="timelineViewLabel" class="timeline-view-label">全片</span>
         <label><input id="timelineSnap" type="checkbox" checked> 吸附</label>
@@ -1453,6 +1440,7 @@
   </div>
   <div class="shortcut-strip" aria-label="快捷键说明">
     <span><kbd>⌘P</kbd>听当前句</span>
+    <span><kbd>⌥P</kbd>连播筛选</span>
     <span><kbd>J/K</kbd>上/下一句</span>
     <span><kbd>↑/↓</kbd>按句移动</span>
     <span><kbd>Tab</kbd>切换句</span>
@@ -1517,6 +1505,7 @@ let expandedTimeLineId = null;
 let timelineZoom = 1;
 let timelineViewStart = 0;
 let waveformPeaks = [];
+let waveformWindow = null;
 let waveformSignature = "";
 let waveformLoading = false;
 let waveformError = "";
@@ -1526,8 +1515,11 @@ let redoStack = [];
 let pendingTextSnapshot = false;
 let textHistoryTimer = null;
 const MAX_HISTORY = 80;
+const DEFAULT_TIMELINE_WINDOW_SECONDS = 20;
+const MAX_TIMELINE_ZOOM = 160;
 const REVIEW_FILTERS = [
   { id: "all", label: "全部" },
+  { id: "kept", label: "当前保留" },
   { id: "focus", label: "重点" },
   { id: "asr-gap", label: "ASR空窗" },
   { id: "dense-metric", label: "密集数字" },
@@ -1728,6 +1720,10 @@ function hasPriorityFlag(item, relatedLines = []) {
 
 function reviewItemMatchesFilter(item, filterId, relatedLines = []) {
   if (!filterId || filterId === "all") return true;
+  if (filterId === "kept") {
+    if (relatedLines.length) return relatedLines.some(line => !line.deleted);
+    return !item?.deleted;
+  }
   if (filterId === "focus") return hasPriorityFlag(item, relatedLines);
   if (filterId === "delete-suggested") {
     return isReviewItemSuggestedDelete(item, relatedLines)
@@ -1745,12 +1741,12 @@ function activeReviewFilterLabel() {
 }
 
 function reviewFilterCounts() {
-  return Object.fromEntries(REVIEW_FILTERS.map(filter => [
-    filter.id,
-    filter.id === "all"
-      ? state.scriptLines.length
-      : state.scriptLines.filter(line => lineMatchesReviewFilter(line, filter.id)).length,
-  ]));
+  return Object.fromEntries(REVIEW_FILTERS.map(filter => {
+    let count = state.scriptLines.filter(line => lineMatchesReviewFilter(line, filter.id)).length;
+    if (filter.id === "all") count = state.scriptLines.length;
+    if (filter.id === "kept") count = state.scriptLines.filter(line => !line.deleted).length;
+    return [filter.id, count];
+  }));
 }
 
 function renderReviewFilters() {
@@ -1973,6 +1969,7 @@ function historySnapshot() {
     navMode,
     reviewMode,
     lastTextMode,
+    qaFilter,
     dirty,
   };
 }
@@ -1986,6 +1983,7 @@ function historyKey(snapshot) {
     navMode: snapshot.navMode,
     reviewMode: snapshot.reviewMode,
     lastTextMode: snapshot.lastTextMode,
+    qaFilter: snapshot.qaFilter,
   });
 }
 
@@ -2027,6 +2025,7 @@ function restoreSnapshot(snapshot) {
   navMode = snapshot.navMode || "script";
   reviewMode = snapshot.reviewMode || "lines";
   lastTextMode = snapshot.lastTextMode || (reviewMode === "continuous" ? "continuous" : "lines");
+  qaFilter = snapshot.qaFilter || "all";
   dirty = true;
   renumberLines();
   renderAll();
@@ -2121,8 +2120,9 @@ async function loadData(projectId = currentProjectId, options = {}) {
   renumberLines();
   activeLineId = state.scriptLines[0]?.id ?? null;
   timelineSourceTime = activeLineId ? parseNum(lineById(activeLineId)?.start) : 0;
-  timelineZoom = 1;
+  timelineZoom = defaultTimelineZoom();
   timelineViewStart = 0;
+  centerTimelineView(timelineSourceTime);
   renderAll();
   renderMediaTabs();
   setStatus(`已载入：${meta.statePath}`);
@@ -2147,8 +2147,8 @@ function deletedDuration() {
 function renderMetrics() {
   const deletedLines = state.scriptLines.filter(line => line.deleted).length;
   const removed = deletedDuration();
-  const visibleCount = reviewMode === "final" ? finalLines().length : visibleLines().length;
-  const filterActive = Boolean($("search")?.value.trim()) || showDeletedOnly || qaFilter !== "all" || navMode === "qa" || reviewMode === "final";
+  const visibleCount = visibleLines().length;
+  const filterActive = Boolean($("search")?.value.trim()) || showDeletedOnly || qaFilter !== "all" || navMode === "qa";
   const reviewCounts = reviewFilterCounts();
   $("metrics").innerHTML = [
     `<div class="metric"><span>全文</span>${state.scriptLines.length}</div>`,
@@ -2315,7 +2315,6 @@ function renderModeControls() {
   $("statsNavBtn").classList.toggle("active", reviewMode === "stats");
   $("lineModeBtn").classList.toggle("active", reviewMode === "lines");
   $("continuousModeBtn").classList.toggle("active", reviewMode === "continuous");
-  $("finalModeBtn").classList.toggle("active", reviewMode === "final");
   $("showDeleted").classList.toggle("active", showDeletedOnly);
   renderReviewFilters();
 }
@@ -2450,26 +2449,6 @@ function renderContinuous() {
     : `<div class="empty">没有匹配的片段</div>`;
 }
 
-function finalLines() {
-  const q = $("search").value.trim().toLowerCase();
-  return state.scriptLines.filter(line => {
-    if (line.deleted) return false;
-    return !q || reviewItemSearchText(line).includes(q);
-  });
-}
-
-function renderFinalView() {
-  const rows = finalLines();
-  const content = rows.map(line => {
-    const active = String(line.id) === String(activeLineId);
-    const rowClass = ["final-segment", active ? "active" : ""].filter(Boolean).join(" ");
-    return `<span class="${rowClass}" data-line-id="${line.id}">${escapeHtml(line.text)}</span>`;
-  }).join(" ");
-  $("scriptRows").innerHTML = content
-    ? `<article class="final-paper" aria-label="完成版文案">${content}</article>`
-    : `<div class="empty">当前删除设置下没有保留文案</div>`;
-}
-
 function renderStatsView() {
   const reviewCounts = reviewFilterCounts();
   const removed = deletedDuration();
@@ -2492,7 +2471,6 @@ function renderAll() {
   renderMetrics();
   renderModeControls();
   if (reviewMode === "candidates") renderCandidateGroups();
-  else if (reviewMode === "final") renderFinalView();
   else if (reviewMode === "continuous") renderContinuous();
   else if (reviewMode === "stats") renderStatsView();
   else renderRows();
@@ -2565,6 +2543,11 @@ function focusLineText(id) {
 
 function setActive(id, rerender = true) {
   activeLineId = Number(id);
+  const line = lineById(activeLineId);
+  if (line) {
+    timelineSourceTime = parseNum(line.start);
+    centerTimelineView(timelineSourceTime);
+  }
   if (rerender) {
     renderAll();
   } else {
@@ -2937,6 +2920,12 @@ function timelineViewDuration() {
   return Math.max(0.1, projectDuration() / Math.max(1, Number(timelineZoom) || 1));
 }
 
+function defaultTimelineZoom() {
+  const duration = projectDuration();
+  if (duration <= DEFAULT_TIMELINE_WINDOW_SECONDS) return 1;
+  return Math.max(1, Math.min(MAX_TIMELINE_ZOOM, duration / DEFAULT_TIMELINE_WINDOW_SECONDS));
+}
+
 function timelineViewEnd() {
   return Math.min(projectDuration(), timelineViewStart + timelineViewDuration());
 }
@@ -2950,7 +2939,7 @@ function clampTimelineViewStart(value) {
 }
 
 function normalizeTimelineView() {
-  timelineZoom = Math.max(1, Math.min(16, Number(timelineZoom) || 1));
+  timelineZoom = Math.max(1, Math.min(MAX_TIMELINE_ZOOM, Number(timelineZoom) || 1));
   timelineViewStart = timelineZoom <= 1 ? 0 : clampTimelineViewStart(timelineViewStart);
 }
 
@@ -3052,9 +3041,16 @@ function waveformBarsHtml() {
   if (!waveformPeaks.length) return `<div class="waveform-status">展开后生成真实波形</div>`;
   normalizeTimelineView();
   const duration = Math.max(0.1, projectDuration());
-  const first = Math.max(0, Math.floor(timelineViewStart / duration * waveformPeaks.length));
-  const last = Math.min(waveformPeaks.length, Math.ceil(timelineViewEnd() / duration * waveformPeaks.length));
-  const visiblePeaks = waveformPeaks.slice(first, Math.max(first + 2, last));
+  const windowMatchesView = waveformWindow
+    && Math.abs(waveformWindow.start - timelineViewStart) < 0.08
+    && Math.abs(waveformWindow.end - timelineViewEnd()) < 0.08;
+  if (waveformWindow && !windowMatchesView) return `<div class="waveform-status">正在生成真实波形…</div>`;
+  let visiblePeaks = waveformPeaks;
+  if (!windowMatchesView) {
+    const first = Math.max(0, Math.floor(timelineViewStart / duration * waveformPeaks.length));
+    const last = Math.min(waveformPeaks.length, Math.ceil(timelineViewEnd() / duration * waveformPeaks.length));
+    visiblePeaks = waveformPeaks.slice(first, Math.max(first + 2, last));
+  }
   const count = visiblePeaks.length;
   const rangePath = visiblePeaks.map((bucket, i) => {
     const x = count <= 1 ? 0 : (i / (count - 1)) * 100;
@@ -3076,7 +3072,7 @@ function waveformBarsHtml() {
 
 function waveformBarCount() {
   const width = $("waveform")?.clientWidth || 900;
-  return Math.max(240, Math.min(2400, Math.round(width / 2 * Math.max(1, timelineZoom))));
+  return Math.max(240, Math.min(1200, Math.round(width / 2)));
 }
 
 function waveformSourceMedia() {
@@ -3090,6 +3086,7 @@ function waveformMediaUrl(media) {
 
 function resetWaveform() {
   waveformPeaks = [];
+  waveformWindow = null;
   waveformSignature = "";
   waveformLoading = false;
   waveformError = "";
@@ -3103,13 +3100,23 @@ function normalizeWaveformPeaks(peaks) {
   }));
 }
 
-async function fetchServerWaveformPeaks(count) {
-  if (!currentProjectId) return [];
-  const res = await fetch(`${apiPath("/api/waveform")}&bins=${encodeURIComponent(count)}`, { cache: "force-cache" });
-  if (!res.ok) return [];
+async function fetchServerWaveform(count, start, end) {
+  if (!currentProjectId) return null;
+  const params = new URLSearchParams({
+    project: currentProjectId,
+    bins: String(count),
+    start: String(Math.max(0, Number(start) || 0)),
+    end: String(Math.max(0, Number(end) || 0)),
+  });
+  const res = await fetch(`/api/waveform?${params.toString()}`, { cache: "force-cache" });
+  if (!res.ok) return null;
   const data = await res.json();
-  if (!data.ok || !Array.isArray(data.peaks)) return [];
-  return normalizeWaveformPeaks(data.peaks);
+  if (!data.ok || !Array.isArray(data.peaks)) return null;
+  return {
+    peaks: normalizeWaveformPeaks(data.peaks),
+    start: Number(data.start),
+    end: Number(data.end),
+  };
 }
 
 async function ensureWaveformPeaks() {
@@ -3117,9 +3124,13 @@ async function ensureWaveformPeaks() {
   const media = waveformSourceMedia();
   const url = waveformMediaUrl(media);
   const count = waveformBarCount();
-  const signature = `${url}|${count}`;
+  normalizeTimelineView();
+  const windowStart = timelineViewStart;
+  const windowEnd = timelineViewEnd();
+  const signature = `${url}|${count}|${windowStart.toFixed(2)}|${windowEnd.toFixed(2)}`;
   if (!url) {
     waveformPeaks = [];
+    waveformWindow = null;
     waveformSignature = signature;
     waveformError = "没有可用音频";
     renderTimeline();
@@ -3134,13 +3145,18 @@ async function ensureWaveformPeaks() {
   try {
     let serverPeaks = [];
     try {
-      serverPeaks = await fetchServerWaveformPeaks(count);
+      const serverWaveform = await fetchServerWaveform(count, windowStart, windowEnd);
+      serverPeaks = serverWaveform?.peaks || [];
+      if (serverPeaks.length) {
+        waveformPeaks = serverPeaks;
+        waveformWindow = {
+          start: Number.isFinite(serverWaveform.start) ? serverWaveform.start : windowStart,
+          end: Number.isFinite(serverWaveform.end) ? serverWaveform.end : windowEnd,
+        };
+        return;
+      }
     } catch {
       serverPeaks = [];
-    }
-    if (serverPeaks.length) {
-      waveformPeaks = serverPeaks;
-      return;
     }
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
     if (!AudioContextClass) throw new Error("浏览器不支持音频解码");
@@ -3182,9 +3198,11 @@ async function ensureWaveformPeaks() {
       max: Math.max(-1, Math.min(1, bucket.max / scale)),
       trace: Math.max(-1, Math.min(1, bucket.trace / scale)),
     }));
+    waveformWindow = null;
     if (context.close) await context.close();
   } catch {
     waveformPeaks = [];
+    waveformWindow = null;
     waveformError = "真实波形不可用";
   } finally {
     waveformLoading = false;
@@ -3316,7 +3334,7 @@ function toggleTimelineExpanded() {
 
 function setTimelineZoom(value) {
   const center = timelineViewStart + timelineViewDuration() / 2;
-  timelineZoom = Math.max(1, Math.min(16, Number(value) || 1));
+  timelineZoom = Math.max(1, Math.min(MAX_TIMELINE_ZOOM, Number(value) || 1));
   timelineViewStart = timelineZoom <= 1 ? 0 : clampTimelineViewStart(center - timelineViewDuration() / 2);
   ensureTimelineTimeVisible(timelineSourceTime);
   resetWaveform();
@@ -3450,6 +3468,81 @@ function clearPlaybackStop() {
 function stopPlayback(media) {
   media.pause();
   clearPlaybackStop();
+}
+
+function visiblePlaybackLines() {
+  return visibleLines()
+    .filter(line => Math.max(parseNum(line.start), parseNum(line.end)) > parseNum(line.start) + 0.02)
+    .sort((a, b) => parseNum(a.start) - parseNum(b.start) || Number(a.index) - Number(b.index));
+}
+
+function filteredPlaybackStartIndex(rows) {
+  const active = lineById(activeLineId);
+  const activeIndex = Number(active?.index) || 0;
+  const exact = rows.findIndex(line => String(line.id) === String(activeLineId));
+  if (exact >= 0) return exact;
+  const after = rows.findIndex(line => Number(line.index) >= activeIndex);
+  return after >= 0 ? after : 0;
+}
+
+function ensureActiveLineInVisibleRows() {
+  const rows = visiblePlaybackLines();
+  if (!rows.length || rows.some(line => String(line.id) === String(activeLineId))) return;
+  const current = lineById(activeLineId);
+  const currentIndex = Number(current?.index) || 0;
+  const next = rows.find(line => Number(line.index) >= currentIndex) || rows[0];
+  activeLineId = Number(next.id);
+  timelineSourceTime = parseNum(next.start);
+  centerTimelineView(timelineSourceTime);
+}
+
+function playFilteredFromCurrent() {
+  const media = document.querySelector("[data-source-media]");
+  if (!media) return;
+  const rows = visiblePlaybackLines();
+  if (!rows.length) {
+    setStatus("当前筛选没有可播放内容", "danger-text");
+    return;
+  }
+  clearPlaybackStop();
+  applyTimelineMediaSettings(media);
+  let currentIndex = filteredPlaybackStartIndex(rows);
+  const playLineAt = (index) => {
+    const line = rows[index];
+    if (!line) return false;
+    activeLineId = Number(line.id);
+    timelineSourceTime = parseNum(line.start);
+    centerTimelineView(timelineSourceTime);
+    media.currentTime = timelineSourceTime;
+    renderAll();
+    scrollActiveIntoView();
+    return true;
+  };
+  stopHandler = () => {
+    const line = rows[currentIndex];
+    if (!line) {
+      stopPlayback(media);
+      return;
+    }
+    timelineSourceTime = Number(media.currentTime) || 0;
+    ensureTimelineTimeVisible(timelineSourceTime);
+    scheduleTimelineRender();
+    if (media.currentTime < parseNum(line.end) - 0.015) return;
+    currentIndex += 1;
+    if (currentIndex >= rows.length) {
+      stopPlayback(media);
+      setStatus("筛选内容已播放完", "ok");
+      return;
+    }
+    playLineAt(currentIndex);
+  };
+  if (!playLineAt(currentIndex)) return;
+  stopMedia = media;
+  media.addEventListener("timeupdate", stopHandler);
+  stopPollTimer = setInterval(stopHandler, 20);
+  const playResult = media.play();
+  if (playResult?.catch) playResult.catch(() => clearPlaybackStop());
+  setStatus(`正在连播：${activeReviewFilterLabel()} · ${rows.length - currentIndex} 段`, "ok");
 }
 
 function playRange(start, end, target = "source") {
@@ -3610,6 +3703,12 @@ document.addEventListener("keydown", (e) => {
     saveState(false);
     return;
   }
+  if (e.altKey && !e.metaKey && !e.ctrlKey && (e.key.toLowerCase() === "p" || e.code === "KeyP")) {
+    e.preventDefault();
+    if (textEl) syncTextFromElement(textEl);
+    playFilteredFromCurrent();
+    return;
+  }
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "p") {
     e.preventDefault();
     if (textEl) syncTextFromElement(textEl);
@@ -3706,6 +3805,8 @@ document.addEventListener("click", (e) => {
   if (!button) return;
   if (button.dataset.reviewFilter) {
     qaFilter = button.dataset.reviewFilter;
+    if (qaFilter === "kept") showDeletedOnly = false;
+    ensureActiveLineInVisibleRows();
     renderAll();
     return;
   }
@@ -3761,28 +3862,18 @@ $("projectSelect").addEventListener("change", (e) => loadData(e.target.value));
 $("candidateModeBtn").addEventListener("click", () => {
   navMode = "candidates";
   reviewMode = "candidates";
-  qaFilter = "all";
   renderAll();
 });
 $("lineModeBtn").addEventListener("click", () => {
   navMode = navMode === "qa" ? "qa" : "script";
   reviewMode = "lines";
   lastTextMode = "lines";
-  if (navMode !== "qa") qaFilter = "all";
   renderAll();
 });
 $("continuousModeBtn").addEventListener("click", () => {
   navMode = navMode === "qa" ? "qa" : "script";
   reviewMode = "continuous";
   lastTextMode = "continuous";
-  if (navMode !== "qa") qaFilter = "all";
-  renderAll();
-});
-$("finalModeBtn").addEventListener("click", () => {
-  navMode = "script";
-  reviewMode = "final";
-  qaFilter = "all";
-  showDeletedOnly = false;
   renderAll();
 });
 $("scriptNavBtn").addEventListener("click", () => {
@@ -3804,6 +3895,8 @@ $("statsNavBtn").addEventListener("click", () => {
 });
 $("showDeleted").addEventListener("click", () => {
   showDeletedOnly = !showDeletedOnly;
+  if (showDeletedOnly && qaFilter === "kept") qaFilter = "all";
+  ensureActiveLineInVisibleRows();
   $("showDeleted").classList.toggle("active", showDeletedOnly);
   renderAll();
 });

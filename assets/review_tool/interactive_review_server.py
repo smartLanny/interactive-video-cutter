@@ -35,7 +35,7 @@ PROJECTS: dict[str, "ProjectConfig"] = {}
 DEFAULT_PROJECT_ID = ""
 MANIFEST_PATH = DEFAULT_MANIFEST
 SERVER_MUTEX = threading.RLock()
-WAVEFORM_CACHE: dict[tuple[str, str, int, str], list[dict[str, float]]] = {}
+WAVEFORM_CACHE: dict[tuple[str, str, int, str, float, float], list[dict[str, float]]] = {}
 
 
 @dataclass(frozen=True)
@@ -471,20 +471,28 @@ def waveform_media_for(project: ProjectConfig, kind: str = "") -> Path | None:
     return project.draft_media or project.source_media
 
 
-def waveform_cache_key(project: ProjectConfig, path: Path, bins: int) -> tuple[str, str, int, str]:
+def waveform_cache_key(project: ProjectConfig, path: Path, bins: int, start: float, end: float) -> tuple[str, str, int, str, float, float]:
     stat = path.stat()
     revision = f"{stat.st_mtime_ns}:{stat.st_size}"
-    return (project.id, str(path), bins, revision)
+    return (project.id, str(path), bins, revision, round(start, 3), round(end, 3))
 
 
-def build_waveform_peaks(path: Path, bins: int) -> list[dict[str, float]]:
+def build_waveform_peaks(path: Path, bins: int, start: float = 0.0, end: float = 0.0) -> list[dict[str, float]]:
     command = [
         "ffmpeg",
         "-hide_banner",
         "-loglevel",
         "error",
+    ]
+    if start > 0:
+        command += ["-ss", f"{start:.3f}"]
+    command += [
         "-i",
         str(path),
+    ]
+    if end > start:
+        command += ["-t", f"{end - start:.3f}"]
+    command += [
         "-vn",
         "-ac",
         "1",
@@ -540,20 +548,25 @@ def build_waveform_peaks(path: Path, bins: int) -> list[dict[str, float]]:
     ]
 
 
-def waveform_peaks(project: ProjectConfig, kind: str, bins: int) -> tuple[Path, list[dict[str, float]]]:
+def waveform_peaks(project: ProjectConfig, kind: str, bins: int, start: float = 0.0, end: float = 0.0) -> tuple[Path, list[dict[str, float]], float, float]:
     path = waveform_media_for(project, kind)
     if not path:
         raise FileNotFoundError("waveform media not found")
-    bins = max(120, min(1200, bins))
-    key = waveform_cache_key(project, path, bins)
+    start = max(0.0, float(start or 0.0))
+    end = max(0.0, float(end or 0.0))
+    if end <= start:
+        start = 0.0
+        end = 0.0
+    bins = max(120, min(2400, bins))
+    key = waveform_cache_key(project, path, bins, start, end)
     with SERVER_MUTEX:
         cached = WAVEFORM_CACHE.get(key)
     if cached is not None:
-        return path, cached
-    peaks = build_waveform_peaks(path, bins)
+        return path, cached, start, end
+    peaks = build_waveform_peaks(path, bins, start, end)
     with SERVER_MUTEX:
         WAVEFORM_CACHE[key] = peaks
-    return path, peaks
+    return path, peaks, start, end
 
 
 def parse_srt(path: Path) -> list[dict]:
@@ -1833,12 +1846,20 @@ class Handler(BaseHTTPRequestHandler):
                     bins = int(query.get("bins", ["720"])[0])
                 except ValueError:
                     bins = 720
-                path, peaks = waveform_peaks(project, kind, bins)
+                try:
+                    start = float(query.get("start", ["0"])[0])
+                    end = float(query.get("end", ["0"])[0])
+                except ValueError:
+                    start = 0.0
+                    end = 0.0
+                path, peaks, start, end = waveform_peaks(project, kind, bins, start, end)
                 json_response(self, {
                     "ok": True,
                     "project": project.id,
                     "media": str(path),
                     "bins": len(peaks),
+                    "start": start,
+                    "end": end,
                     "peaks": peaks,
                 })
             except KeyError:

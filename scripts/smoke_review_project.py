@@ -415,11 +415,13 @@ def assert_server_export_options_and_waveform(root: Path, manifest: Path, export
     module.load_projects(manifest)
     project = module.get_project("smoke-video")
 
-    path, peaks = module.waveform_peaks(project, "", 24)
+    path, peaks, start, end = module.waveform_peaks(project, "", 24, 0.0, 0.5)
     if project.draft_media and path != project.draft_media:
         raise RuntimeError(f"waveform should prefer draft audio proxy for video projects: {path}")
     if len(peaks) != 120:
         raise RuntimeError(f"waveform bins were not clamped to the minimum: {len(peaks)}")
+    if (start, end) != (0.0, 0.5):
+        raise RuntimeError(f"waveform window was not preserved: {(start, end)}")
     for bucket in peaks:
         for key in ("min", "max", "trace"):
             value = bucket.get(key)
